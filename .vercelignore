@@ -1,0 +1,12 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+.env
+.venv
+venv
+.DS_Store
+scratch
+data/uploads/*
+!data/uploads/.gitkeep

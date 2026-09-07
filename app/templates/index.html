@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherSpectra // Autonomous SIGINT & Telemetry Platform</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <!-- Prevent flash of wrong theme -->
+    <script>
+        (function() {
+            const saved = localStorage.getItem('workbench_theme');
+            if (saved === 'light' || (!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+                document.documentElement.classList.remove('dark');
+            } else {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        tactical: {
+                            bg: 'var(--bg-main)',
+                            card: 'var(--bg-card)',
+                            cardSub: 'var(--bg-card-sub)',
+                            cardHover: 'var(--bg-card-hover)',
+                            border: 'var(--border-main)',
+                            borderSub: 'var(--border-sub)',
+                            accent: '#0284C7',
+                            accentGlow: '#38BDF8',
+                            success: '#10B981',
+                            warning: '#F59E0B',
+                            danger: '#EF4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js and Plotly CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-main: #F8FAFC;
+            --bg-card: #FFFFFF;
+            --bg-card-sub: #F1F5F9;
+            --bg-card-hover: #E2E8F0;
+            --border-main: #E2E8F0;
+            --border-sub: #CBD5E1;
+            --text-title: #0F172A;
+            --text-body: #334155;
+            --text-muted: #64748B;
+        }
+
+        html.dark {
+            --bg-main: #090D16;
+            --bg-card: #131C2E;
+            --bg-card-sub: #0E1626;
+            --bg-card-hover: #1E293B;
+            --border-main: #1E293B;
+            --border-sub: #334155;
+            --text-title: #FFFFFF;
+            --text-body: #E2E8F0;
+            --text-muted: #94A3B8;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-body);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        .mono-font { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--border-main); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-sub); }
+        
+        .glow-cyan { text-shadow: 0 0 10px rgba(56, 189, 248, 0.6); }
+        .glow-green { text-shadow: 0 0 10px rgba(16, 185, 129, 0.6); }
+        
+        .theme-transition {
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+    <!-- Top Navigation / Header -->
+    <header class="bg-tactical-card border-b border-tactical-border px-4 lg:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md theme-transition sticky top-0 z-30">
+        <!-- Logo & Title -->
+        <div class="flex items-center space-x-3">
+            <img src="/static/logo.svg" alt="AetherSpectra Logo" class="w-9 h-9 shrink-0 drop-shadow-md">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="font-black text-base lg:text-lg text-slate-900 dark:text-white tracking-wider">AETHER<span class="text-sky-500 dark:text-sky-400 glow-cyan">SPECTRA</span></span>
+                    <span class="text-[10px] lg:text-xs bg-sky-100 dark:bg-sky-950 border border-sky-300 dark:border-sky-500/30 text-sky-800 dark:text-sky-300 font-bold px-2 py-0.5 rounded">AUTONOMOUS SIGINT v3.0</span>
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">Automated 8-Stage Filtering, FFT, Carrier/Timing Sync, Modulation Classification & Telemetry Suite</p>
+            </div>
+        </div>
+
+        <!-- Real-Time Metric Badges & Action Controls -->
+        <div class="flex items-center flex-wrap gap-2">
+            <!-- Metric Badges -->
+            <div class="flex items-center space-x-2">
+                <div class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-1 text-center theme-transition">
+                    <div class="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Carrier Lock</div>
+                    <div id="carrierLockBadge" class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-center space-x-1">
+                        <span class="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-500 inline-block mr-1"></span> IDLE
+                    </div>
+                </div>
+                <div class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-1 text-center theme-transition">
+                    <div class="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Estimated SNR</div>
+                    <div id="snrBadge" class="text-xs font-bold text-slate-800 dark:text-slate-200 mono-font">-- dB</div>
+                </div>
+                <div class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-1 text-center theme-transition hidden md:block">
+                    <div class="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">EVM (RMS)</div>
+                    <div id="evmBadge" class="text-xs font-bold text-slate-800 dark:text-slate-200 mono-font">-- dB</div>
+                </div>
+                <div class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-1 text-center theme-transition">
+                    <div class="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">DSP Latency</div>
+                    <div id="latencyBadge" class="text-xs font-bold text-slate-800 dark:text-slate-200 mono-font">-- ms</div>
+                </div>
+            </div>
+
+            <div class="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block"></div>
+
+            <!-- Theme Toggler Button -->
+            <button onclick="toggleTheme()" id="themeToggleBtn" title="Toggle Light / Dark Theme" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs px-2.5 py-1.5 rounded-md flex items-center space-x-1.5 transition shadow-sm">
+                <i id="themeToggleIcon" data-lucide="sun" class="w-4 h-4 text-amber-500 dark:text-amber-400"></i>
+                <span id="themeToggleText">LIGHT</span>
+            </button>
+
+            <!-- Export Report Modal Trigger Button -->
+            <button onclick="openExportModal()" id="exportReportBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition shadow-md shadow-emerald-900/20">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                <span>EXPORT REPORT</span>
+            </button>
+
+            <!-- Run Pipeline Trigger Button -->
+            <button onclick="reRunPipeline()" id="runPipelineBtn" class="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-md shadow-md shadow-sky-900/30 flex items-center space-x-1.5 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>RUN PIPELINE</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Layout Grid -->
+    <div class="flex-1 p-3 lg:p-4 grid grid-cols-12 gap-4 max-w-[1920px] mx-auto w-full">
+
+        <!-- Left Sidebar: Controls, Registry, and 12-Stage Pipeline Stepper (4 cols) -->
+        <aside class="col-span-12 lg:col-span-4 space-y-4 flex flex-col">
+            
+            <!-- Ingest & Synthesizer Card -->
+            <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm theme-transition">
+                <!-- Mode Switcher Tabs -->
+                <div class="flex items-center justify-between mb-3 border-b border-slate-200 dark:border-slate-800 pb-2">
+                    <div class="flex space-x-1 bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <button onclick="switchIngestMode('upload')" id="tabModeUpload" class="text-xs font-bold px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs transition">
+                            <i data-lucide="upload" class="w-3.5 h-3.5 inline mr-1 text-sky-500"></i>Upload File
+                        </button>
+                        <button onclick="switchIngestMode('synth')" id="tabModeSynth" class="text-xs font-bold px-2.5 py-1 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-1 text-amber-500"></i>Synthesizer
+                        </button>
+                    </div>
+                    <span class="text-[10px] text-emerald-600 dark:text-emerald-400 mono-font font-bold flex items-center">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block mr-1"></span>Ready
+                    </span>
+                </div>
+
+                <!-- 1. Upload Ingestion View -->
+                <div id="viewModeUpload" class="space-y-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block mb-1">Sampling Rate</label>
+                            <select id="uploadSampleRate" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg p-2 mono-font focus:ring-1 focus:ring-sky-500">
+                                <option value="2000000">2.0 MSPS (Default)</option>
+                                <option value="1000000">1.0 MSPS</option>
+                                <option value="500000">500 kSPS</option>
+                                <option value="2400000">2.4 MSPS (RTL-SDR)</option>
+                                <option value="10000000">10.0 MSPS (Wideband)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block mb-1">Center Frequency</label>
+                            <input type="text" id="uploadCenterFreq" value="434.5 MHz" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg p-2 mono-font focus:ring-1 focus:ring-sky-500">
+                        </div>
+                    </div>
+
+                    <!-- Dropzone -->
+                    <div id="dropZone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-sky-500 dark:hover:border-sky-400 rounded-xl p-5 text-center cursor-pointer transition bg-slate-50/70 dark:bg-slate-900/50 group">
+                        <div class="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/80 border border-sky-300 dark:border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition">
+                            <i data-lucide="file-up" class="w-5 h-5"></i>
+                        </div>
+                        <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Drop .IQ, .WAV, or .RAW capture here</p>
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Or click to browse from local workstation</p>
+                        <div class="flex items-center justify-center space-x-1.5 mt-2.5">
+                            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.iq</span>
+                            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.wav</span>
+                            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.raw</span>
+                            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.bin</span>
+                            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.sigmf</span>
+                        </div>
+                        <input type="file" id="fileInput" class="hidden" accept=".iq,.wav,.raw,.bin,.dat,.sigmf">
+                    </div>
+                </div>
+
+                <!-- 2. Synthesizer View -->
+                <div id="viewModeSynth" class="space-y-3 hidden">
+                    <label class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block mb-1">Target Mission Profile</label>
+                    <select id="synthPresetSelect" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg p-2 mono-font">
+                        <option value="Profile A">Profile A (Satellite QPSK, RS+Vit, Block 16x16)</option>
+                        <option value="Profile B">Profile B (Tactical HF 2-FSK, Forney 12x17, RS 255/223)</option>
+                        <option value="Profile C">Profile C (UHF Link 16-QAM, Diagonal 64, Concatenated)</option>
+                        <option value="Profile D">Profile D (Deep Space BPSK, LFSR 256, LDPC/Vit)</option>
+                        <option value="Profile E">Profile E (Avionics 8-PSK, Forney 12x17, NASA Vit)</option>
+                    </select>
+
+                    <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                        <div class="flex items-center text-amber-600 dark:text-amber-400 font-bold text-xs">
+                            <i data-lucide="info" class="w-3.5 h-3.5 mr-1"></i>Synthetic Baseband Generator
+                        </div>
+                        <p>Generates calibrated RF samples with multipath CFO, SNR variation, interleaving, and framing headers.</p>
+                    </div>
+
+                    <button onclick="synthesizeSignal()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs py-2 rounded-lg shadow-sm flex items-center justify-center space-x-1.5 transition">
+                        <i data-lucide="play-circle" class="w-4 h-4"></i>
+                        <span>Generate & Ingest Signal</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Captured Signals & Audit Log -->
+            <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm flex flex-col flex-1 min-h-[200px] theme-transition">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
+                        <i data-lucide="archive" class="w-4 h-4 text-emerald-500 dark:text-emerald-400"></i>
+                        <span>Signal Captures Audit Log</span>
+                    </h3>
+                    <button onclick="clearAllFiles()" class="text-[10px] text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 font-bold transition">
+                        Clear All
+                    </button>
+                </div>
+                
+                <div class="overflow-y-auto max-h-48 space-y-2 pr-1 flex-1" id="fileRegistryList">
+                    <!-- Populated dynamically via JS -->
+                </div>
+            </div>
+
+            <!-- Pipeline 12-Stage Execution Stepper & Latency Trace -->
+            <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm theme-transition">
+                <div class="flex items-center justify-between mb-2.5">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
+                        <i data-lucide="cpu" class="w-4 h-4 text-sky-500 dark:text-sky-400"></i>
+                        <span>12-Stage DSP Execution Trace</span>
+                    </h3>
+                    <span id="traceTotalBadge" class="text-[10px] mono-font font-bold text-sky-600 dark:text-sky-400">-- ms Total</span>
+                </div>
+                
+                <div class="space-y-1 text-xs max-h-72 overflow-y-auto pr-1" id="pipelineStages">
+                    
+                    <!-- 1. Filtering -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>1. Filtering (Bandpass/DC)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latFiltering">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barFiltering" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 2. FFT -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>2. Fast Fourier Transform (FFT)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latFft">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barFft" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Frequency Estimation -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>3. Frequency Estimation (fc, BW, CFO)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latFreqEst">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barFreqEst" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Synchronization -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>4. Synchronization (Carrier & Timing)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latSync">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barSync" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Modulation Detection -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>5. Modulation Detection (AMC)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latModDet">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barModDet" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Noise Estimation -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>6. Noise Estimation (M2M4 & N0)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latNoiseEst">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barNoiseEst" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 7. Demodulation -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>7. Demodulation (Symbols → Bits)</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latDemod">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barDemod" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- 8. Signal Classification -->
+                    <div class="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="flex items-center space-x-1.5 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span>8. Signal Classification & Intelligence</span>
+                            </span>
+                            <span class="mono-font text-[10px] text-slate-500 dark:text-slate-400" id="latSigClass">-- ms</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="barSigClass" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Right Main Workspace (8 cols) -->
+        <main class="col-span-12 lg:col-span-8 space-y-4">
+
+            <!-- Empty State / Awaiting Ingestion Banner -->
+            <div id="emptyStateBanner" class="bg-tactical-card border-2 border-dashed border-sky-400/40 dark:border-sky-500/30 rounded-xl p-8 text-center shadow-md theme-transition">
+                <div class="bg-sky-100 dark:bg-sky-950/60 border border-sky-300 dark:border-sky-500/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-sky-600 dark:text-sky-400">
+                    <i data-lucide="radio" class="w-8 h-8 animate-pulse"></i>
+                </div>
+                <h2 class="text-base font-bold text-slate-900 dark:text-white mb-1">Signal Intelligence Workbench Ready</h2>
+                <p class="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-5">
+                    The 12-stage DSP pipeline is online with dynamic parameter extraction. Select or drop a signal capture on the left to start real-time analytics.
+                </p>
+                <div class="flex flex-wrap items-center justify-center gap-3">
+                    <button onclick="document.getElementById('fileInput').click()" class="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-sm transition inline-flex items-center space-x-2">
+                        <i data-lucide="upload" class="w-4 h-4"></i>
+                        <span>Upload Signal Capture</span>
+                    </button>
+                    <button onclick="switchIngestMode('synth'); synthesizeSignal();" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs px-4 py-2 rounded-lg transition inline-flex items-center space-x-2">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+                        <span>Generate Test Signal</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active Analysis Container (Hidden until file loaded) -->
+            <div id="activeAnalysisView" class="space-y-4 hidden">
+
+                <!-- 1. Top Section: Time-Frequency Multi-Tab Visualizer -->
+                <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm theme-transition">
+                    <!-- Tab Switcher Header with Big Panel Expander Toggle -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 mb-3">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button onclick="switchTab('waveform')" id="tabWaveform" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-sky-600 text-white shadow-xs transition flex items-center space-x-1.5">
+                                <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+                                <span>Raw Waveform (I/Q)</span>
+                            </button>
+                            <button onclick="switchTab('psd')" id="tabPsd" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center space-x-1.5">
+                                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>
+                                <span>Power Spectral Density (PSD)</span>
+                            </button>
+                            <button onclick="switchTab('spectrogram')" id="tabSpectrogram" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center space-x-1.5">
+                                <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                                <span>2D Waterfall Spectrogram</span>
+                            </button>
+
+                            <!-- Big Panel Toggle Button -->
+                            <button onclick="toggleVisualizerExpand()" id="expandVisualizerBtn" title="Toggle Big Panel View" class="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition flex items-center space-x-1">
+                                <i data-lucide="maximize-2" id="expandIcon" class="w-3.5 h-3.5 text-sky-500"></i>
+                                <span id="expandBtnText">Big Panel</span>
+                            </button>
+                        </div>
+
+                        <span id="signalSourceLabel" class="text-xs text-sky-700 dark:text-sky-400 mono-font font-bold px-2 py-0.5 rounded bg-sky-50 dark:bg-sky-950 border border-sky-200 dark:border-sky-800">
+                            Active File: --
+                        </span>
+                    </div>
+
+                    <!-- Visualizer Canvas & Plots (Height adjusts on Big Panel toggle) -->
+                    <div id="visualizerContainer" class="h-64 w-full transition-all duration-200">
+                        <div id="viewWaveform" class="h-full w-full">
+                            <canvas id="waveformChart"></canvas>
+                        </div>
+                        <div id="viewPsd" class="h-full w-full hidden">
+                            <div id="psdPlot" class="w-full h-full"></div>
+                        </div>
+                        <div id="viewSpectrogram" class="h-full w-full hidden flex flex-col">
+                            <!-- Spectrogram SDR Toolbar -->
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5 px-1 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                                <div class="flex flex-wrap items-center gap-2.5">
+                                    <div class="flex items-center space-x-1.5">
+                                        <span class="font-bold text-slate-700 dark:text-slate-300 text-[10px]">Palette:</span>
+                                        <select id="specColorscaleSelect" onchange="changeSpecPalette(this.value)" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded px-2 py-0.5 text-[10px] font-bold focus:ring-1 focus:ring-sky-500">
+                                            <option value="SDR_Waterfall" selected>SDR Waterfall (SigID / WebSDR)</option>
+                                            <option value="Inferno">Inferno (Thermal Contrast)</option>
+                                            <option value="Jet">Classic Jet</option>
+                                            <option value="Viridis">Viridis</option>
+                                            <option value="Plasma">Plasma</option>
+                                            <option value="Electric">Electric Neon</option>
+                                            <option value="Hot">Hot Blackbody</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Contrast / Floor Slider -->
+                                    <div class="flex items-center space-x-1.5 hidden sm:flex">
+                                        <span class="font-bold text-slate-700 dark:text-slate-300 text-[10px]">Contrast:</span>
+                                        <input type="range" id="specContrastSlider" min="10" max="80" value="35" oninput="changeSpecContrast(this.value)" class="w-16 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                                        <span id="specContrastVal" class="text-[9px] mono-font text-slate-500">35%</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center space-x-1.5">
+                                    <button onclick="toggleSpecOrientation()" id="specOrientBtn" class="bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-2 py-0.5 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 transition shadow-2xs">
+                                        <i data-lucide="rotate-cw" class="w-3 h-3 inline mr-0.5 text-sky-500"></i><span id="specOrientText">SDR View (Freq ↔ / Time ↕)</span>
+                                    </button>
+                                    <button onclick="zoomSpecBurst()" id="specZoomBurstBtn" class="bg-sky-100 hover:bg-sky-200 dark:bg-sky-950 dark:hover:bg-sky-900 border border-sky-300 dark:border-sky-700 px-2 py-0.5 rounded text-[10px] font-bold text-sky-700 dark:text-sky-300 transition shadow-2xs">
+                                        <i data-lucide="zoom-in" class="w-3 h-3 inline mr-0.5"></i><span id="specZoomText">Zoom Burst Cycle</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="specPlot" class="w-full flex-1 min-h-0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Middle Section: Constellation & Demod + Parameters & AMC Studio (2 Columns) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    <!-- Left Column: I/Q Constellation & Carrier Sync -->
+                    <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm theme-transition flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
+                                <i data-lucide="crosshair" class="w-4 h-4 text-emerald-500 dark:text-emerald-400"></i>
+                                <span>I/Q Constellation Diagram</span>
+                            </h3>
+                            <span id="constModLabel" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-500/30 px-2 py-0.5 rounded">-- Synchronized</span>
+                        </div>
+                        <div class="h-60 w-full my-auto">
+                            <div id="constellationPlot" class="w-full h-full"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] mono-font pt-2 border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
+                            <span>Costas Loop Lock: <b id="constLockStatus" class="text-emerald-600 dark:text-emerald-400">LOCKED</b></span>
+                            <span>EVM: <b id="constEvmVal" class="text-sky-600 dark:text-sky-400">-- dB</b></span>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Blind Parameters & AMC Classifier -->
+                    <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm flex flex-col justify-between theme-transition">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
+                                    <i data-lucide="gauge" class="w-4 h-4 text-sky-500 dark:text-sky-400"></i>
+                                    <span>Blind Parameters & AMC Classification</span>
+                                </h3>
+                                <span id="amcModBadge" class="text-xs font-bold text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-950/60 border border-sky-300 dark:border-sky-500/30 px-2 py-0.5 rounded">--</span>
+                            </div>
+
+                            <!-- 4 Parameter Mini-Cards -->
+                            <div class="grid grid-cols-2 gap-2 mb-2.5">
+                                <div class="bg-slate-50 dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                                    <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Center Frequency (fc)</div>
+                                    <div id="paramFc" class="text-xs font-bold text-slate-900 dark:text-white mono-font">-- MHz</div>
+                                </div>
+                                <div class="bg-slate-50 dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                                    <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Occupied 99% BW</div>
+                                    <div id="paramBw" class="text-xs font-bold text-slate-900 dark:text-white mono-font">-- kHz</div>
+                                </div>
+                                <div class="bg-slate-50 dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                                    <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Symbol Rate (Rs)</div>
+                                    <div id="paramRs" class="text-xs font-bold text-slate-900 dark:text-white mono-font">-- kBaud</div>
+                                </div>
+                                <div class="bg-slate-50 dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                                    <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">CFO Offset (Δfc)</div>
+                                    <div id="paramCfo" class="text-xs font-bold text-slate-900 dark:text-white mono-font">-- Hz</div>
+                                </div>
+                            </div>
+
+                            <!-- Higher Order Cumulants Table -->
+                            <div class="bg-slate-50 dark:bg-slate-900/80 p-2 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] mono-font mb-2">
+                                <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mb-1">Higher-Order Cumulants Features</div>
+                                <div class="grid grid-cols-3 gap-1 text-slate-700 dark:text-slate-300">
+                                    <div>C20: <span id="cumC20" class="text-sky-600 dark:text-sky-400 font-bold">--</span></div>
+                                    <div>C40: <span id="cumC40" class="text-sky-600 dark:text-sky-400 font-bold">--</span></div>
+                                    <div>C42: <span id="cumC42" class="text-sky-600 dark:text-sky-400 font-bold">--</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AMC Probability Bar Chart -->
+                        <div class="h-16 w-full mt-1">
+                            <canvas id="amcProbChart"></canvas>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 3. Bottom Section: Decoded Telemetry Payload & Bitstream Inspector -->
+                <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm space-y-3 theme-transition">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
+                            <i data-lucide="binary" class="w-4 h-4 text-sky-500 dark:text-sky-400"></i>
+                            <span>Recovered Telemetry Payload & Protocol Framing</span>
+                        </h3>
+                        <div class="flex items-center space-x-2">
+                            <span id="fecBadge" class="text-[11px] bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sky-700 dark:text-sky-300 px-2.5 py-0.5 rounded font-mono">FEC: --</span>
+                            <span id="crcBadge" class="text-[11px] bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 px-2.5 py-0.5 rounded font-bold">CRC: --</span>
+                        </div>
+                    </div>
+
+                    <!-- Decoded Plaintext ASCII Banner -->
+                    <div class="bg-slate-50 dark:bg-slate-900 border border-sky-400/40 dark:border-sky-500/30 rounded-xl p-3.5 relative group">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] text-sky-700 dark:text-sky-400 uppercase font-bold tracking-wider flex items-center space-x-1">
+                                <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
+                                <span>Decoded Intelligence Stream (ASCII)</span>
+                            </div>
+                            <button onclick="copyDecodedString()" id="copyPayloadBtn" class="text-[10px] font-bold text-slate-500 hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-300 flex items-center space-x-1 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 transition">
+                                <i data-lucide="copy" class="w-3 h-3"></i>
+                                <span id="copyBtnText">Copy</span>
+                            </button>
+                        </div>
+                        <div id="decodedPayload" class="text-sm font-bold text-sky-900 dark:text-cyan-300 mono-font glow-cyan break-all select-all">
+                            --
+                        </div>
+                    </div>
+
+                    <!-- Hex Stream and Framing Status Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mono-font">
+                        <div class="bg-slate-50 dark:bg-slate-900/80 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mb-1.5 flex items-center justify-between">
+                                <span>Raw Hex Byte Stream</span>
+                                <i data-lucide="hash" class="w-3 h-3 text-slate-400"></i>
+                            </div>
+                            <div id="hexDump" class="text-slate-700 dark:text-slate-300 break-all text-[11px] max-h-24 overflow-y-auto">
+                                --
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 dark:bg-slate-900/80 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mb-1.5 flex items-center justify-between">
+                                <span>De-Interleaver & Descrambler State</span>
+                                <i data-lucide="shield-check" class="w-3 h-3 text-emerald-500"></i>
+                            </div>
+                            <div id="deinterStatus" class="text-slate-700 dark:text-slate-300 text-[11px] space-y-1">
+                                <div>De-Interleaver: <span class="text-sky-600 dark:text-sky-400 font-bold" id="deinterMode">--</span></div>
+                                <div>Descrambler: <span class="text-sky-600 dark:text-sky-400 font-bold" id="descramblerMode">--</span></div>
+                                <div>Frame Sync Marker: <span class="text-emerald-600 dark:text-emerald-400 font-bold" id="syncMarkerVal">--</span></div>
+                                <div>Corrected Errors: <span class="text-emerald-600 dark:text-emerald-400 font-bold" id="fecErrors">0</span> symbols</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ================= REPORT EXPORT FORMAT SELECTION MODAL ================= -->
+    <div id="exportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 hidden">
+        <div class="bg-tactical-card border border-tactical-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 theme-transition">
+            
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <i data-lucide="file-output" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-sm text-slate-900 dark:text-white">Export Intelligence Report</h3>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Select target report format for current mission analysis</p>
+                    </div>
+                </div>
+                <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg transition">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body: Format Selection Panel -->
+            <div class="p-6 space-y-4">
+                <div class="text-xs font-bold text-slate-700 dark:text-slate-300">Choose Export Format:</div>
+
+                <!-- 5 Formats Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="formatGrid">
+                    
+                    <!-- 1. PDF -->
+                    <div onclick="selectExportFormat('pdf')" id="fmt-pdf" class="format-card border-2 border-sky-500 bg-sky-50/60 dark:bg-sky-950/40 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="file-text" class="w-4 h-4"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">PDF Document</span>
+                                <span class="text-[10px] mono-font font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">.pdf</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Formal NTRO Intelligence Dossier with formatted tables & latency trace</p>
+                        </div>
+                    </div>
+
+                    <!-- 2. JSON -->
+                    <div onclick="selectExportFormat('json')" id="fmt-json" class="format-card border border-slate-200 dark:border-slate-800 hover:border-sky-400 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="code" class="w-4 h-4"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">JSON Raw Data</span>
+                                <span class="text-[10px] mono-font font-bold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400">.json</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Machine-readable hierarchical analysis data & raw telemetry</p>
+                        </div>
+                    </div>
+
+                    <!-- 3. Markdown -->
+                    <div onclick="selectExportFormat('md')" id="fmt-md" class="format-card border border-slate-200 dark:border-slate-800 hover:border-sky-400 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="file-code" class="w-4 h-4"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">Markdown</span>
+                                <span class="text-[10px] mono-font font-bold px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400">.md</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">GitHub Flavored Markdown technical summary with tables & hex dump</p>
+                        </div>
+                    </div>
+
+                    <!-- 4. DOCX -->
+                    <div onclick="selectExportFormat('docx')" id="fmt-docx" class="format-card border border-slate-200 dark:border-slate-800 hover:border-sky-400 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">Word Document</span>
+                                <span class="text-[10px] mono-font font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">.docx</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Microsoft Word format with formatted headers, styles & data tables</p>
+                        </div>
+                    </div>
+
+                    <!-- 5. CSV -->
+                    <div onclick="selectExportFormat('csv')" id="fmt-csv" class="format-card border border-slate-200 dark:border-slate-800 hover:border-sky-400 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3 sm:col-span-2">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="table" class="w-4 h-4"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">CSV Spreadsheet</span>
+                                <span class="text-[10px] mono-font font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">.csv</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Comma-separated tabular dataset of parameters, quality metrics, and cumulants</p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Live Format Preview Link -->
+                <div class="flex items-center justify-between text-xs pt-2 text-slate-500 dark:text-slate-400">
+                    <span>Or view interactive HTML report:</span>
+                    <a href="/api/v1/report/html" target="_blank" class="text-sky-600 dark:text-sky-400 hover:underline font-bold inline-flex items-center">
+                        <span>Open HTML Report (With Big Wave Charts)</span>
+                        <i data-lucide="external-link" class="w-3.5 h-3.5 ml-1"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Modal Footer Actions -->
+            <div class="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-end space-x-2">
+                <button onclick="closeExportModal()" class="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    Cancel
+                </button>
+                <button onclick="downloadReport()" id="confirmDownloadBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2 rounded-lg shadow-md shadow-emerald-900/20 flex items-center space-x-1.5 transition">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span id="downloadBtnText">Download PDF Report</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        let currentAnalysisData = null;
+        let waveformChartInstance = null;
+        let amcProbChartInstance = null;
+        let selectedFormat = 'pdf';
+        let isVisualizerExpanded = false;
+        let currentTab = 'waveform';
+
+        // Theme Toggle Functions
+        function isDarkMode() {
+            return document.documentElement.classList.contains('dark');
+        }
+
+        function getThemeColors() {
+            const dark = isDarkMode();
+            return {
+                isDark: dark,
+                bgPlot: dark ? '#090D16' : '#FFFFFF',
+                gridColor: dark ? '#1E293B' : '#E2E8F0',
+                textColor: dark ? '#94A3B8' : '#64748B',
+                tickColor: dark ? '#64748B' : '#475569',
+                zeroLineColor: dark ? '#334155' : '#CBD5E1',
+                barInactive: dark ? '#1E293B' : '#E2E8F0',
+                barActive: '#0284C7',
+                constellation: dark ? '#10B981' : '#059669',
+                waveformI: '#0284C7',
+                waveformQ: dark ? '#38BDF8' : '#0EA5E9'
+            };
+        }
+
+        function setTheme(theme) {
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('themeToggleIcon');
+            const themeText = document.getElementById('themeToggleText');
+
+            if (theme === 'light') {
+                html.classList.remove('dark');
+                localStorage.setItem('workbench_theme', 'light');
+                if (themeIcon) {
+                    themeIcon.setAttribute('data-lucide', 'moon');
+                    themeIcon.className = "w-4 h-4 text-indigo-500";
+                }
+                if (themeText) themeText.innerText = 'DARK';
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('workbench_theme', 'dark');
+                if (themeIcon) {
+                    themeIcon.setAttribute('data-lucide', 'sun');
+                    themeIcon.className = "w-4 h-4 text-amber-400";
+                }
+                if (themeText) themeText.innerText = 'LIGHT';
+            }
+            lucide.createIcons();
+
+            // Refresh charts if data is active
+            if (currentAnalysisData) {
+                renderAllVisuals();
+            }
+            refreshFileRegistry();
+        }
+
+        function toggleTheme() {
+            setTheme(isDarkMode() ? 'light' : 'dark');
+        }
+
+        // Initialize App on DOM Load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const savedTheme = localStorage.getItem('workbench_theme') || (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            setTheme(savedTheme);
+            await refreshFileRegistry();
+            setupDropZone();
+        });
+
+        // Ingest Mode Switcher (Upload vs Synthesizer)
+        function switchIngestMode(mode) {
+            const upTab = document.getElementById('tabModeUpload');
+            const synTab = document.getElementById('tabModeSynth');
+            const upView = document.getElementById('viewModeUpload');
+            const synView = document.getElementById('viewModeSynth');
+
+            if (mode === 'upload') {
+                upView.classList.remove('hidden');
+                synView.classList.add('hidden');
+                upTab.className = "text-xs font-bold px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs transition";
+                synTab.className = "text-xs font-bold px-2.5 py-1 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition";
+            } else {
+                upView.classList.add('hidden');
+                synView.classList.remove('hidden');
+                synTab.className = "text-xs font-bold px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs transition";
+                upTab.className = "text-xs font-bold px-2.5 py-1 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition";
+            }
+        }
+
+        // Visualizer Big Panel Expander Toggle
+        function toggleVisualizerExpand() {
+            isVisualizerExpanded = !isVisualizerExpanded;
+            const container = document.getElementById('visualizerContainer');
+            const btnText = document.getElementById('expandBtnText');
+            const icon = document.getElementById('expandIcon');
+
+            if (isVisualizerExpanded) {
+                container.className = "h-[440px] w-full transition-all duration-200";
+                btnText.innerText = "Compact";
+                icon.setAttribute('data-lucide', 'minimize-2');
+            } else {
+                container.className = "h-64 w-full transition-all duration-200";
+                btnText.innerText = "Big Panel";
+                icon.setAttribute('data-lucide', 'maximize-2');
+            }
+            lucide.createIcons();
+
+            setTimeout(() => {
+                if (currentTab === 'waveform' && currentAnalysisData) renderWaveformChart(currentAnalysisData.waveform);
+                if (currentTab === 'psd') Plotly.Plots.resize('psdPlot');
+                if (currentTab === 'spectrogram') Plotly.Plots.resize('specPlot');
+            }, 100);
+        }
+
+        // Tab Switching in Visualizer
+        function switchTab(tab) {
+            currentTab = tab;
+            const tabMap = {
+                'waveform': { view: 'viewWaveform', btn: 'tabWaveform' },
+                'psd': { view: 'viewPsd', btn: 'tabPsd' },
+                'spectrogram': { view: 'viewSpectrogram', btn: 'tabSpectrogram' }
+            };
+
+            // Reset all tabs
+            Object.keys(tabMap).forEach(key => {
+                const v = document.getElementById(tabMap[key].view);
+                const b = document.getElementById(tabMap[key].btn);
+                if (v) v.classList.add('hidden');
+                if (b) b.className = "text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center space-x-1.5";
+            });
+
+            // Activate chosen tab
+            const target = tabMap[tab];
+            if (target) {
+                const v = document.getElementById(target.view);
+                const b = document.getElementById(target.btn);
+                if (v) v.classList.remove('hidden');
+                if (b) b.className = "text-xs font-bold px-3 py-1.5 rounded-lg bg-sky-600 text-white shadow-xs transition flex items-center space-x-1.5";
+            }
+
+            // Immediately re-render or resize active plot on visible container
+            if (currentAnalysisData) {
+                if (tab === 'waveform') {
+                    renderWaveformChart(currentAnalysisData.waveform);
+                } else if (tab === 'psd') {
+                    renderPsdPlot(currentAnalysisData.psd);
+                    setTimeout(() => Plotly.Plots.resize('psdPlot'), 30);
+                } else if (tab === 'spectrogram') {
+                    renderSpectrogramPlot(currentAnalysisData.spectrogram);
+                    setTimeout(() => Plotly.Plots.resize('specPlot'), 30);
+                }
+            }
+        }
+
+        function renderAllVisuals() {
+            if (!currentAnalysisData) return;
+            renderWaveformChart(currentAnalysisData.waveform);
+            renderPsdPlot(currentAnalysisData.psd);
+            renderSpectrogramPlot(currentAnalysisData.spectrogram);
+            renderConstellationPlot(currentAnalysisData.synchronization);
+            renderAmcProbChart(currentAnalysisData.amc.probabilities);
+        }
+
+        // Refresh File Registry List
+        async function refreshFileRegistry() {
+            try {
+                const res = await fetch('/api/v1/files');
+                const data = await res.json();
+                const container = document.getElementById('fileRegistryList');
+                container.innerHTML = '';
+                
+                if (data.files.length === 0) {
+                    container.innerHTML = '<div class="text-center py-6 text-slate-400 dark:text-slate-500 text-xs italic">No files stored yet. Upload a file above.</div>';
+                    return;
+                }
+
+                data.files.forEach(f => {
+                    const isActive = f.file_id === data.active_file_id;
+                    const card = document.createElement('div');
+                    card.className = `p-2.5 rounded-xl border transition flex flex-col space-y-1.5 text-xs ${
+                        isActive 
+                            ? 'bg-sky-100/90 dark:bg-sky-950/60 border-sky-400 dark:border-sky-500/60 shadow-xs' 
+                            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`;
+
+                    const summaryText = f.analysis_summary 
+                        ? `<span class="text-emerald-600 dark:text-emerald-400 font-bold">${f.analysis_summary.modulation}</span> <span class="text-slate-500">(${f.analysis_summary.snr_db} dB SNR)</span>`
+                        : `<span class="text-slate-400 dark:text-slate-500 italic">Unprocessed</span>`;
+
+                    card.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[180px]" title="${f.filename}">${f.filename}</span>
+                            <span class="text-[10px] mono-font text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-950 px-1.5 py-0.5 rounded font-bold">${f.size_formatted}</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                            <span>${f.format_detected}</span>
+                            <span>${f.upload_time_formatted.split(' ')[1]}</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200 dark:border-slate-800">
+                            <div>${summaryText}</div>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="selectFile('${f.file_id}')" class="text-[10px] font-bold text-sky-700 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded transition">
+                                    Analyze
+                                </button>
+                                <button onclick="deleteFile('${f.file_id}')" class="text-[10px] text-slate-400 hover:text-rose-500 p-0.5 transition" title="Delete">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+                lucide.createIcons();
+            } catch (err) {
+                console.error("Failed to fetch file registry:", err);
+            }
+        }
+
+        async function selectFile(fileId) {
+            try {
+                const res = await fetch('/api/v1/files/select', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ file_id: fileId })
+                });
+                const data = await res.json();
+                if (data.status === 'SUCCESS') {
+                    renderPipelineResults(data.analysis);
+                    await refreshFileRegistry();
+                }
+            } catch (err) {
+                console.error("Failed to select file:", err);
+            }
+        }
+
+        async function deleteFile(fileId) {
+            if (!confirm("Delete this stored signal file and remove from audit log?")) return;
+            try {
+                await fetch(`/api/v1/files/${fileId}`, { method: 'DELETE' });
+                await refreshFileRegistry();
+            } catch (err) {
+                console.error("Failed to delete file:", err);
+            }
+        }
+
+        async function clearAllFiles() {
+            if (!confirm("Are you sure you want to clear all stored files and reset the audit log?")) return;
+            try {
+                await fetch('/api/v1/files/clear', { method: 'POST' });
+                currentAnalysisData = null;
+                document.getElementById('emptyStateBanner').classList.remove('hidden');
+                document.getElementById('activeAnalysisView').classList.add('hidden');
+                resetBadges();
+                await refreshFileRegistry();
+            } catch (err) {
+                console.error("Failed to clear files:", err);
+            }
+        }
+
+        async function synthesizeSignal() {
+            const preset = document.getElementById('synthPresetSelect').value;
+            try {
+                const res = await fetch('/api/v1/signals/synthesize', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ profile: preset })
+                });
+                const data = await res.json();
+                if (data.status === 'SUCCESS') {
+                    renderPipelineResults(data.analysis);
+                    await refreshFileRegistry();
+                }
+            } catch (err) {
+                console.error("Synthesis failed:", err);
+            }
+        }
+
+        async function reRunPipeline() {
+            try {
+                const res = await fetch('/api/v1/pipeline/run', { method: 'POST' });
+                const data = await res.json();
+                if (data.status !== 'ERROR') {
+                    renderPipelineResults(data);
+                    await refreshFileRegistry();
+                }
+            } catch (err) {
+                console.error("Pipeline run failed:", err);
+            }
+        }
+
+        function resetBadges() {
+            document.getElementById('carrierLockBadge').innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-500 inline-block mr-1"></span> IDLE`;
+            document.getElementById('snrBadge').innerText = `-- dB`;
+            document.getElementById('evmBadge').innerText = `-- dB`;
+            document.getElementById('latencyBadge').innerText = `-- ms`;
+            document.getElementById('traceTotalBadge').innerText = `-- ms Total`;
+        }
+
+        // Render Results into UI
+        function renderPipelineResults(d) {
+            currentAnalysisData = d;
+            document.getElementById('emptyStateBanner').classList.add('hidden');
+            document.getElementById('activeAnalysisView').classList.remove('hidden');
+
+            // Header Badges
+            document.getElementById('carrierLockBadge').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block mr-1"></span> ${d.synchronization.carrier_lock_status}`;
+            document.getElementById('snrBadge').innerText = `${d.preprocessing_stats.snr_m2m4_db.toFixed(1)} dB`;
+            document.getElementById('evmBadge').innerText = `${d.synchronization.evm_db.toFixed(1)} dB`;
+            document.getElementById('latencyBadge').innerText = `${d.total_latency_ms} ms`;
+            document.getElementById('traceTotalBadge').innerText = `${d.total_latency_ms} ms Total`;
+            document.getElementById('signalSourceLabel').innerText = `Active File: ${d.filename}`;
+
+            // 12-Stage Stepper Latencies
+            const total = Math.max(d.total_latency_ms, 0.1);
+            const setStage = (latId, barId, ms) => {
+                const elLat = document.getElementById(latId);
+                const elBar = document.getElementById(barId);
+                if (elLat) elLat.innerText = `${ms} ms`;
+                if (elBar) elBar.style.width = `${Math.min(100, (ms / total) * 100)}%`;
+            };
+
+            const lats = d.latencies || {};
+            setStage('latFiltering', 'barFiltering', lats.filtering || 0.1);
+            setStage('latFft', 'barFft', lats.fft || 0.1);
+            setStage('latFreqEst', 'barFreqEst', lats.frequency_estimation || 0.1);
+            setStage('latSync', 'barSync', lats.synchronization || 0.1);
+            setStage('latModDet', 'barModDet', lats.modulation_detection || 0.1);
+            setStage('latNoiseEst', 'barNoiseEst', lats.noise_estimation || 0.1);
+            setStage('latDemod', 'barDemod', lats.demodulation || 0.1);
+            setStage('latSigClass', 'barSigClass', lats.signal_classification || 0.1);
+
+            // Parameters
+            const p = d.parameters || {};
+            const fcVal = p.carrier_freq_hz || p.center_freq_hz || 0;
+            const bwVal = p.occupied_bandwidth_99_hz || p.occupied_bw_99_hz || 0;
+            const rsVal = p.symbol_rate_baud || p.baud_rate_hz || 0;
+            const cfoVal = p.cfo_residual_hz || p.cfo_estimated_hz || 0;
+
+            document.getElementById('paramFc').innerText = `${(fcVal / 1e6).toFixed(3)} MHz`;
+            document.getElementById('paramBw').innerText = `${(bwVal / 1e3).toFixed(1)} kHz`;
+            document.getElementById('paramRs').innerText = `${(rsVal / 1e3).toFixed(1)} kBaud`;
+            document.getElementById('paramCfo').innerText = `${cfoVal > 0 ? '+' : ''}${cfoVal.toFixed(1)} Hz`;
+
+            // Cumulants & AMC
+            document.getElementById('cumC20').innerText = d.amc.cumulants.C20.toFixed(2);
+            document.getElementById('cumC40').innerText = d.amc.cumulants.C40.toFixed(2);
+            document.getElementById('cumC42').innerText = d.amc.cumulants.C42.toFixed(2);
+            document.getElementById('amcModBadge').innerText = `${d.amc.identified_modulation} (${(d.amc.confidence * 100).toFixed(1)}%)`;
+            document.getElementById('constModLabel').innerText = `${d.amc.identified_modulation} Synchronized`;
+            document.getElementById('constLockStatus').innerText = d.synchronization.carrier_lock_status;
+            document.getElementById('constEvmVal').innerText = `${d.synchronization.evm_db.toFixed(1)} dB`;
+
+            // Telemetry & Decoded
+            const telem = d.telemetry || {};
+            const framing = d.framing || {};
+            const descramble = d.descrambler || {};
+            const crc = d.crc || {};
+
+            document.getElementById('decodedPayload').innerText = telem.decoded_text || "RAW DATA LOCKED";
+            document.getElementById('hexDump').innerText = telem.hex_dump || "--";
+            document.getElementById('fecBadge').innerText = `FEC: ${d.fec.scheme}`;
+            document.getElementById('crcBadge').innerText = `CRC: ${crc.status || 'VALID'}`;
+            document.getElementById('deinterMode').innerText = d.deinterleaver.selected;
+            document.getElementById('descramblerMode').innerText = descramble.scheme_applied || "Direct";
+            document.getElementById('syncMarkerVal').innerText = framing.sync_marker || "CCSDS ASM";
+            document.getElementById('fecErrors').innerText = d.fec.corrected_errors || "0";
+
+            // Render Active Visuals
+            renderAllVisuals();
+        }
+
+        // 1. Waveform Chart (Chart.js)
+        function renderWaveformChart(wf) {
+            const canvas = document.getElementById('waveformChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (waveformChartInstance) waveformChartInstance.destroy();
+
+            const c = getThemeColors();
+
+            waveformChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: wf.time_ms.map(t => t.toFixed(2)),
+                    datasets: [
+                        { label: 'In-Phase (I)', data: wf.i, borderColor: c.waveformI, borderWidth: 1.5, pointRadius: 0 },
+                        { label: 'Quadrature (Q)', data: wf.q, borderColor: c.waveformQ, borderWidth: 1.5, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: { 
+                        legend: { 
+                            labels: { color: c.textColor, font: { size: 10 } } 
+                        } 
+                    },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: 'Time (ms)', color: c.tickColor, font: { size: 9 } },
+                            grid: { color: c.gridColor }, 
+                            ticks: { color: c.tickColor, font: { size: 9 }, maxTicksLimit: 10 } 
+                        },
+                        y: { 
+                            title: { display: true, text: 'Normalized Amplitude', color: c.tickColor, font: { size: 9 } },
+                            grid: { color: c.gridColor }, 
+                            ticks: { color: c.tickColor, font: { size: 9 } } 
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. PSD Plot (Plotly)
+        function renderPsdPlot(psd) {
+            const c = getThemeColors();
+            const trace = {
+                x: psd.freqs.map(f => f / 1e3),
+                y: psd.psd_db,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: c.isDark ? '#38BDF8' : '#0284C7', width: 1.5 }
+            };
+            const layout = {
+                margin: { t: 10, r: 10, b: 35, l: 45 },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: c.bgPlot,
+                xaxis: { title: 'Frequency Offset (kHz)', color: c.tickColor, gridcolor: c.gridColor, font: { size: 9 } },
+                yaxis: { title: 'Power (dB/Hz)', color: c.tickColor, gridcolor: c.gridColor, font: { size: 9 } }
+            };
+            Plotly.react('psdPlot', [trace], layout, { responsive: true, displayModeBar: false });
+        }
+
+        const SPEC_COLORMAPS = {
+            'SDR_Waterfall': [
+                [0.0, '#010214'],
+                [0.15, '#0d1f69'],
+                [0.35, '#0066ff'],
+                [0.55, '#00ffd5'],
+                [0.70, '#ffee00'],
+                [0.85, '#ff4400'],
+                [0.95, '#ff0055'],
+                [1.0, '#ffffff']
+            ],
+            'Inferno': 'Inferno',
+            'Jet': 'Jet',
+            'Viridis': 'Viridis',
+            'Plasma': 'Plasma',
+            'Electric': 'Electric',
+            'Hot': 'Hot'
+        };
+
+        let specPaletteKey = 'SDR_Waterfall';
+        let specSdrOrientation = true;
+        let specZoomBurstActive = false;
+        let specContrastPct = 35;
+
+        function changeSpecPalette(paletteKey) {
+            specPaletteKey = paletteKey;
+            if (currentAnalysisData) renderSpectrogramPlot(currentAnalysisData.spectrogram);
+        }
+
+        function changeSpecContrast(val) {
+            specContrastPct = parseInt(val);
+            const valEl = document.getElementById('specContrastVal');
+            if (valEl) valEl.innerText = `${specContrastPct}%`;
+            if (currentAnalysisData) renderSpectrogramPlot(currentAnalysisData.spectrogram);
+        }
+
+        function toggleSpecOrientation() {
+            specSdrOrientation = !specSdrOrientation;
+            const textEl = document.getElementById('specOrientText');
+            if (textEl) {
+                textEl.innerText = specSdrOrientation ? "SDR View (Freq ↔ / Time ↕)" : "Time View (Time ↔ / Freq ↕)";
+            }
+            if (currentAnalysisData) renderSpectrogramPlot(currentAnalysisData.spectrogram);
+        }
+
+        function zoomSpecBurst() {
+            specZoomBurstActive = !specZoomBurstActive;
+            const textEl = document.getElementById('specZoomText');
+            const btnEl = document.getElementById('specZoomBurstBtn');
+            if (specZoomBurstActive) {
+                textEl.innerText = "Reset Zoom (Full File)";
+                btnEl.className = "bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-bold transition";
+            } else {
+                textEl.innerText = "Zoom Burst Cycle";
+                btnEl.className = "bg-sky-100 hover:bg-sky-200 dark:bg-sky-950 dark:hover:bg-sky-900 border border-sky-300 dark:border-sky-700 px-2 py-0.5 rounded text-[10px] font-bold text-sky-700 dark:text-sky-300 transition";
+            }
+            if (currentAnalysisData) renderSpectrogramPlot(currentAnalysisData.spectrogram);
+        }
+
+        // 3. Spectrogram Plot (Plotly)
+        function renderSpectrogramPlot(spec) {
+            if (!spec || !spec.spectrogram_db) return;
+            const c = getThemeColors();
+
+            let timeBins = spec.time_bins;
+            let freqBins = spec.freq_bins;
+            let zMatrix = spec.spectrogram_db; // shape: (n_freq, n_time)
+
+            // If zoom burst cycle is active, crop time window (e.g. first 12 seconds or active burst)
+            if (specZoomBurstActive && timeBins.length > 20) {
+                let maxT = Math.min(12.0, timeBins[timeBins.length - 1]);
+                let tIndices = timeBins.map((t, idx) => ({t, idx})).filter(x => x.t <= maxT);
+                if (tIndices.length > 5) {
+                    let lastIdx = tIndices[tIndices.length - 1].idx;
+                    timeBins = timeBins.slice(0, lastIdx + 1);
+                    zMatrix = zMatrix.map(row => row.slice(0, lastIdx + 1));
+                }
+            }
+
+            // Format frequency labels (Hz for low audio <= 10kHz, or kHz for RF)
+            const isAudioRange = Math.max(...freqBins) <= 10000;
+            const freqDisplay = isAudioRange ? freqBins : freqBins.map(f => f / 1e3);
+            const freqUnit = isAudioRange ? 'Frequency (Hz)' : 'Frequency (kHz)';
+
+            // Dynamic Contrast Range calculation
+            const rawVmin = spec.vmin !== undefined ? spec.vmin : -80;
+            const rawVmax = spec.vmax !== undefined ? spec.vmax : 0;
+            const contrastShift = (rawVmax - rawVmin) * (specContrastPct / 100.0) * 0.6;
+            const effectiveVmin = rawVmin + contrastShift;
+            const effectiveVmax = rawVmax;
+
+            const selectedColorscale = SPEC_COLORMAPS[specPaletteKey] || SPEC_COLORMAPS['SDR_Waterfall'];
+
+            let data, layout;
+
+            if (specSdrOrientation) {
+                // SDR Waterfall: Frequency on Horizontal X-axis, Time on Vertical Y-axis (downward flow)
+                // Transpose zMatrix so rows correspond to Time and columns correspond to Frequency
+                const zTransposed = timeBins.map((_, colIdx) => freqBins.map((_, rowIdx) => zMatrix[rowIdx][colIdx]));
+
+                data = [{
+                    z: zTransposed,
+                    x: freqDisplay,
+                    y: timeBins,
+                    type: 'heatmap',
+                    colorscale: selectedColorscale,
+                    zmin: effectiveVmin,
+                    zmax: effectiveVmax,
+                    colorbar: {
+                        thickness: 10,
+                        title: { text: 'dB', side: 'right', font: { size: 9, color: c.tickColor } },
+                        tickfont: { size: 8, color: c.tickColor }
+                    }
+                }];
+
+                layout = {
+                    margin: { t: 10, r: 10, b: 35, l: 45 },
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: c.bgPlot,
+                    xaxis: { title: freqUnit, color: c.tickColor, gridcolor: c.gridColor, font: { size: 9 } },
+                    yaxis: { title: 'Time (s) [Waterfall Flow]', autorange: 'reversed', color: c.tickColor, gridcolor: c.gridColor, font: { size: 9 } }
+                };
+            } else {
+                // Standard Time-Frequency View: Time on X-axis, Frequency on Y-axis
+                data = [{
+                    z: zMatrix,
+                    x: timeBins,
+                    y: freqDisplay,
+                    type: 'heatmap',
+                    colorscale: selectedColorscale,
+                    zmin: effectiveVmin,
+                    zmax: effectiveVmax,
+                    colorbar: {
+                        thickness: 10,
+                        title: { text: 'dB', side: 'right', font: { size: 9, color: c.tickColor } },
+                        tickfont: { size: 8, color: c.tickColor }
+                    }
+                }];
+
+                layout = {
+                    margin: { t: 10, r: 10, b: 35, l: 45 },
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: c.bgPlot,
+                    xaxis: { title: 'Time (s)', color: c.tickColor, gridcolor: c.gridColor, font: { size: 9 } },
+                    yaxis: { title: freqUnit, color: c.tickColor, gridcolor: c.gridColor, font: { size: 9 } }
+                };
+            }
+
+            Plotly.react('specPlot', data, layout, { responsive: true, displayModeBar: false });
+        }
+
+        // 4. Constellation Diagram (Plotly)
+        function renderConstellationPlot(sync) {
+            const c = getThemeColors();
+            const trace = {
+                x: sync.constellation_i,
+                y: sync.constellation_q,
+                mode: 'markers',
+                type: 'scatter',
+                marker: { color: c.constellation, size: 4, opacity: 0.8 }
+            };
+            const layout = {
+                margin: { t: 10, r: 10, b: 30, l: 30 },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: c.bgPlot,
+                xaxis: { range: [-2.2, 2.2], color: c.tickColor, gridcolor: c.gridColor, zerolinecolor: c.zeroLineColor },
+                yaxis: { range: [-2.2, 2.2], color: c.tickColor, gridcolor: c.gridColor, zerolinecolor: c.zeroLineColor }
+            };
+            Plotly.react('constellationPlot', [trace], layout, { responsive: true, displayModeBar: false });
+        }
+
+        // 5. AMC Probability Bar Chart (Chart.js)
+        function renderAmcProbChart(probs) {
+            const canvas = document.getElementById('amcProbChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (amcProbChartInstance) amcProbChartInstance.destroy();
+
+            const c = getThemeColors();
+            const labels = Object.keys(probs);
+            const values = Object.values(probs);
+
+            amcProbChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: values.map(v => v > 0.5 ? c.barActive : c.barInactive),
+                        borderRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: c.textColor, font: { size: 8 } }, grid: { display: false } },
+                        y: { max: 1.0, ticks: { display: false }, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // Copy Decoded String
+        function copyDecodedString() {
+            const text = document.getElementById('decodedPayload').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                const btnText = document.getElementById('copyBtnText');
+                btnText.innerText = 'Copied!';
+                setTimeout(() => { btnText.innerText = 'Copy'; }, 1500);
+            });
+        }
+
+        // Export Modal Management
+        function openExportModal() {
+            document.getElementById('exportModal').classList.remove('hidden');
+        }
+
+        function closeExportModal() {
+            document.getElementById('exportModal').classList.add('hidden');
+        }
+
+        function selectExportFormat(fmt) {
+            selectedFormat = fmt;
+            const cards = document.querySelectorAll('.format-card');
+            cards.forEach(c => {
+                c.className = "format-card border border-slate-200 dark:border-slate-800 hover:border-sky-400 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3";
+            });
+
+            const activeCard = document.getElementById('fmt-' + fmt);
+            if (activeCard) {
+                activeCard.className = "format-card border-2 border-sky-500 bg-sky-50/60 dark:bg-sky-950/40 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3";
+            }
+
+            document.getElementById('downloadBtnText').innerText = `Download ${fmt.toUpperCase()} Report`;
+        }
+
+        function downloadReport() {
+            window.location.href = `/api/v1/report/export?format=${selectedFormat}`;
+            closeExportModal();
+        }
+
+        // Drag and Drop Ingest
+        function setupDropZone() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+
+            dropZone.onclick = () => fileInput.click();
+            fileInput.onchange = (e) => handleFileUpload(e.target.files[0]);
+
+            dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-sky-500'); };
+            dropZone.ondragleave = () => { dropZone.classList.remove('border-sky-500'); };
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-sky-500');
+                if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+            };
+        }
+
+        async function handleFileUpload(file) {
+            if (!file) return;
+            const fsVal = document.getElementById('uploadSampleRate').value;
+            const fcText = document.getElementById('uploadCenterFreq').value;
+            let fcVal = 434500000;
+            if (fcText.includes('GHz') || fcText.includes('ghz')) {
+                fcVal = parseFloat(fcText) * 1e9;
+            } else if (fcText.includes('MHz') || fcText.includes('mhz')) {
+                fcVal = parseFloat(fcText) * 1e6;
+            } else if (fcText.includes('kHz') || fcText.includes('khz')) {
+                fcVal = parseFloat(fcText) * 1e3;
+            } else {
+                fcVal = parseFloat(fcText) || 434500000;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('sample_rate', fsVal);
+            formData.append('center_freq', fcVal);
+
+            try {
+                const res = await fetch('/api/v1/files/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.status === 'SUCCESS') {
+                    renderPipelineResults(data.analysis);
+                    await refreshFileRegistry();
+                }
+            } catch (err) {
+                console.error("File upload failed:", err);
+            }
+        }
+    </script>
+</body>
+</html>

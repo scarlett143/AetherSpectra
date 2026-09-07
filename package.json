@@ -1,0 +1,21 @@
+{
+  "name": "aetherspectra",
+  "version": "3.0.0",
+  "description": "AetherSpectra - Autonomous RF Signal Intelligence & Telemetry Platform",
+  "main": "api/index.py",
+  "scripts": {
+    "dev": "python3 -m uvicorn api.index:app --host 127.0.0.1 --port 8000 --reload",
+    "start": "python3 -m uvicorn api.index:app --host 127.0.0.1 --port 8000",
+    "build": "pip install -r requirements.txt"
+  },
+  "keywords": [
+    "sigint",
+    "dsp",
+    "telemetry",
+    "fastapi",
+    "sdr",
+    "spectrum-analysis"
+  ],
+  "author": "",
+  "license": "MIT"
+}
