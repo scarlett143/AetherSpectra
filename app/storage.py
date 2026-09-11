@@ -6,7 +6,7 @@ import shutil
 
 # In serverless environments (like Vercel), only /tmp is writable
 if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-    DATA_DIR = "/tmp/sih26147_data"
+    DATA_DIR = "/tmp/aetherspectra_data"
 else:
     DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -26,16 +26,40 @@ def init_storage():
     except Exception:
         pass
 
+def _resolve_record(record: dict) -> dict:
+    """Dynamically resolves and fixes stored_path based on current UPLOADS_DIR."""
+    if not isinstance(record, dict):
+        return record
+    stored_fn = record.get("stored_filename")
+    if stored_fn:
+        current_path = os.path.join(UPLOADS_DIR, stored_fn)
+        if os.path.exists(current_path):
+            record["stored_path"] = current_path
+        elif record.get("stored_path") and os.path.exists(record["stored_path"]):
+            pass
+        else:
+            record["stored_path"] = current_path
+    
+    # Ensure upload_time_formatted exists
+    if not record.get("upload_time_formatted"):
+        ts = record.get("upload_timestamp", "")
+        if "T" in ts:
+            record["upload_time_formatted"] = ts.replace("T", " ")[:19]
+        else:
+            record["upload_time_formatted"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return record
+
 def load_registry() -> list:
     init_storage()
     try:
         if os.path.exists(REGISTRY_PATH):
             with open(REGISTRY_PATH, "r") as f:
                 records = json.load(f)
-                return records
+                if isinstance(records, list):
+                    return [_resolve_record(r) for r in records]
     except Exception:
         pass
-    return _IN_MEMORY_REGISTRY
+    return [_resolve_record(r) for r in _IN_MEMORY_REGISTRY]
 
 def save_registry(records: list):
     global _IN_MEMORY_REGISTRY
@@ -81,7 +105,7 @@ class FileRegistry:
             fmt_label = "Raw I/Q Baseband"
         elif ext == ".dat":
             fmt_label = "GNU Radio Binary Stream"
-        elif ext in [".sigmf", ".sigmf-data"]:
+        elif ext == ".sigmf" or ext == ".sigmf-data":
             fmt_label = "SigMF Standard Data"
         else:
             fmt_label = f"Binary Stream ({ext})"
@@ -112,9 +136,25 @@ class FileRegistry:
         if file_id in _IN_MEMORY_FILES:
             return _IN_MEMORY_FILES[file_id]
         record = FileRegistry.get_by_id(file_id)
-        if record and record.get("stored_path") and os.path.exists(record["stored_path"]):
-            with open(record["stored_path"], "rb") as f:
-                return f.read()
+        if record:
+            # Check resolved stored_path
+            path = record.get("stored_path")
+            if path and not path.startswith("memory://") and os.path.exists(path):
+                try:
+                    with open(path, "rb") as f:
+                        return f.read()
+                except Exception:
+                    pass
+            # Check current UPLOADS_DIR with stored_filename
+            fn = record.get("stored_filename")
+            if fn:
+                local_path = os.path.join(UPLOADS_DIR, fn)
+                if os.path.exists(local_path):
+                    try:
+                        with open(local_path, "rb") as f:
+                            return f.read()
+                    except Exception:
+                        pass
         return None
 
     @staticmethod
@@ -126,7 +166,7 @@ class FileRegistry:
         records = load_registry()
         for r in records:
             if r["file_id"] == file_id:
-                return r
+                return _resolve_record(r)
         return None
 
     @staticmethod
@@ -160,6 +200,14 @@ class FileRegistry:
                     os.remove(stored_path)
                 except Exception:
                     pass
+            stored_fn = record_to_del.get("stored_filename")
+            if stored_fn:
+                alt_path = os.path.join(UPLOADS_DIR, stored_fn)
+                if os.path.exists(alt_path):
+                    try:
+                        os.remove(alt_path)
+                    except Exception:
+                        pass
             return True
         return False
 
@@ -174,7 +222,16 @@ class FileRegistry:
         save_registry([])
         try:
             if os.path.exists(UPLOADS_DIR):
-                shutil.rmtree(UPLOADS_DIR, ignore_errors=True)
-                os.makedirs(UPLOADS_DIR, exist_ok=True)
+                for f in os.listdir(UPLOADS_DIR):
+                    p = os.path.join(UPLOADS_DIR, f)
+                    if os.path.isfile(p):
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
         except Exception:
             pass
+
+    @staticmethod
+    def clear_all_data():
+        FileRegistry.clear_all()

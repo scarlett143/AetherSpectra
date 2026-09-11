@@ -45,11 +45,89 @@ def to_serializable(obj):
 app = FastAPI(title="AetherSpectra Signal Intelligence Platform", version="3.0")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-static_dir = os.path.join(BASE_DIR, "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+ROOT_DIR = os.path.dirname(BASE_DIR)
 
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# Embedded asset fallbacks for serverless environments
+try:
+    from app.templates_embedded import get_embedded_index_html, get_embedded_logo_svg
+except ImportError:
+    def get_embedded_index_html():
+        return "<!DOCTYPE html><html><head><title>AetherSpectra</title></head><body><h1>AetherSpectra Platform</h1></body></html>"
+    def get_embedded_logo_svg():
+        return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='#0284C7'/></svg>"
+
+# Safe Jinja2 template discovery across potential runtime roots
+template_search_dirs = [
+    os.path.join(BASE_DIR, "templates"),
+    os.path.join(ROOT_DIR, "templates"),
+    os.path.join(ROOT_DIR, "api", "templates"),
+    os.path.join(os.getcwd(), "app", "templates"),
+    os.path.join(os.getcwd(), "templates"),
+]
+valid_template_dir = next((d for d in template_search_dirs if os.path.isdir(d)), None)
+templates = Jinja2Templates(directory=valid_template_dir) if valid_template_dir else None
+
+# Dedicated static routes for critical assets so they are ALWAYS served
+@app.get("/static/logo.svg")
+@app.get("/logo.svg")
+async def serve_logo():
+    for cand in [
+        os.path.join(BASE_DIR, "static", "logo.svg"),
+        os.path.join(ROOT_DIR, "api", "static", "logo.svg"),
+        os.path.join(ROOT_DIR, "static", "logo.svg"),
+        os.path.join(os.getcwd(), "app", "static", "logo.svg"),
+    ]:
+        if os.path.exists(cand):
+            try:
+                with open(cand, "r", encoding="utf-8") as f:
+                    return Response(content=f.read(), media_type="image/svg+xml")
+            except Exception:
+                pass
+    return Response(content=get_embedded_logo_svg(), media_type="image/svg+xml")
+
+@app.get("/static/favicon.svg")
+@app.get("/favicon.svg")
+@app.get("/favicon.ico")
+async def serve_favicon():
+    return Response(content=get_embedded_logo_svg(), media_type="image/svg+xml")
+
+@app.get("/api/health")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "ONLINE",
+        "platform": "AetherSpectra",
+        "version": "3.0",
+        "environment": "serverless" if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) else "local"
+    }
+
+# Mount static folder if exists on disk
+static_search_dirs = [
+    os.path.join(BASE_DIR, "static"),
+    os.path.join(ROOT_DIR, "api", "static"),
+    os.path.join(ROOT_DIR, "static"),
+    os.path.join(os.getcwd(), "app", "static"),
+]
+valid_static_dir = next((d for d in static_search_dirs if os.path.isdir(d)), None)
+if valid_static_dir:
+    app.mount("/static", StaticFiles(directory=valid_static_dir), name="static")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Prevents opaque 500 crashes and provides embedded fallback for web browsers."""
+    accept_header = request.headers.get("accept", "")
+    if "text/html" in accept_header or request.url.path == "/":
+        try:
+            return HTMLResponse(content=get_embedded_index_html(), status_code=200)
+        except Exception:
+            return HTMLResponse(
+                content=f"<!DOCTYPE html><html><body><h2>AetherSpectra</h2><p>Operational Fallback. Info: {str(exc)}</p></body></html>",
+                status_code=200
+            )
+    return JSONResponse(
+        status_code=500,
+        content={"status": "ERROR", "message": str(exc), "type": type(exc).__name__}
+    )
 
 # Initialize storage directories on boot
 init_storage()
@@ -231,7 +309,40 @@ def execute_pipeline_on_iq(raw_iq: np.ndarray, fs: float, fc: float, filename: s
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    """Resilient index route with 3-tier fallback to guarantee 200 OK under all serverless conditions."""
+    # Tier 1: Jinja2 template rendering
+    if templates is not None:
+        try:
+            return templates.TemplateResponse("index.html", {"request": request})
+        except Exception:
+            pass
+
+    # Tier 2: Direct file read across known filesystem candidate paths
+    candidate_paths = [
+        os.path.join(BASE_DIR, "templates", "index.html"),
+        os.path.join(ROOT_DIR, "templates", "index.html"),
+        os.path.join(ROOT_DIR, "api", "templates", "index.html"),
+        os.path.join(os.getcwd(), "app", "templates", "index.html"),
+        os.path.join(os.getcwd(), "templates", "index.html"),
+    ]
+    for cp in candidate_paths:
+        if os.path.exists(cp):
+            try:
+                with open(cp, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if content:
+                    return HTMLResponse(content=content, status_code=200)
+            except Exception:
+                pass
+
+    # Tier 3: High-fidelity embedded index.html fallback
+    try:
+        return HTMLResponse(content=get_embedded_index_html(), status_code=200)
+    except Exception as e:
+        return HTMLResponse(
+            content=f"<!DOCTYPE html><html><head><title>AetherSpectra</title></head><body style='background:#090D16;color:#E2E8F0;font-family:sans-serif;padding:2rem;'><h2>AetherSpectra SIGINT Platform</h2><p>Operational Fallback Active: {str(e)}</p></body></html>",
+            status_code=200
+        )
 
 @app.get("/api/v1/files")
 async def list_files():
@@ -287,24 +398,27 @@ async def select_file(payload: dict):
     file_id = payload.get("file_id")
     record = FileRegistry.get_by_id(file_id)
     if not record:
-        return JSONResponse({"status": "ERROR", "message": "File not found"}, status_code=404)
+        return JSONResponse({"status": "ERROR", "message": "File not found in audit registry"}, status_code=404)
 
-    file_bytes = FileRegistry.get_file_bytes(file_id)
-    if file_bytes is not None:
-        iq, fs_detected, fmt_desc = SignalLoader.load_from_bytes(file_bytes, filename=record["filename"], default_fs=record["sample_rate"])
-    else:
-        iq, fs_detected, fmt_desc = SignalLoader.load_from_disk(record["stored_path"], default_fs=record["sample_rate"])
+    try:
+        file_bytes = FileRegistry.get_file_bytes(file_id)
+        if file_bytes is not None:
+            iq, fs_detected, fmt_desc = SignalLoader.load_from_bytes(file_bytes, filename=record["filename"], default_fs=record["sample_rate"])
+        else:
+            iq, fs_detected, fmt_desc = SignalLoader.load_from_disk(record["stored_path"], default_fs=record["sample_rate"])
+    except Exception as e:
+        return JSONResponse({"status": "ERROR", "message": f"Unable to read signal capture: {str(e)}"}, status_code=400)
     
     ACTIVE_SESSION["file_id"] = record["file_id"]
     ACTIVE_SESSION["filename"] = record["filename"]
-    ACTIVE_SESSION["stored_path"] = record["stored_path"]
+    ACTIVE_SESSION["stored_path"] = record.get("stored_path")
     ACTIVE_SESSION["raw_iq"] = iq
     ACTIVE_SESSION["sample_rate"] = fs_detected
-    ACTIVE_SESSION["center_freq"] = record["center_freq"]
+    ACTIVE_SESSION["center_freq"] = record.get("center_freq", 434.5e6)
     ACTIVE_SESSION["format_desc"] = fmt_desc
     ACTIVE_SESSION["status"] = "ANALYZED"
 
-    analysis = execute_pipeline_on_iq(iq, fs_detected, record["center_freq"], record["filename"], record["file_id"])
+    analysis = execute_pipeline_on_iq(iq, fs_detected, record.get("center_freq", 434.5e6), record["filename"], record["file_id"])
     ACTIVE_SESSION["pipeline_results"] = analysis
 
     return {
@@ -316,7 +430,7 @@ async def select_file(payload: dict):
 @app.delete("/api/v1/files/{file_id}")
 async def delete_file(file_id: str):
     """Deletes a file from disk and audit registry."""
-    success = FileRegistry.delete_by_id(file_id)
+    success = FileRegistry.delete(file_id)
     if ACTIVE_SESSION["file_id"] == file_id:
         ACTIVE_SESSION["file_id"] = None
         ACTIVE_SESSION["filename"] = None
@@ -328,7 +442,7 @@ async def delete_file(file_id: str):
 @app.post("/api/v1/files/clear")
 async def clear_all_files():
     """Wipes all uploaded files and audit logs to start completely fresh."""
-    FileRegistry.clear_all_data()
+    FileRegistry.clear_all()
     ACTIVE_SESSION["file_id"] = None
     ACTIVE_SESSION["filename"] = None
     ACTIVE_SESSION["raw_iq"] = None
@@ -406,35 +520,35 @@ async def export_report(format: str = Query("pdf")):
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="NTRO_Report_{clean_name}.pdf"'}
+            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.pdf"'}
         )
     elif fmt == "docx":
         docx_bytes = ReportGenerator.generate_docx(res)
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="NTRO_Report_{clean_name}.docx"'}
+            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.docx"'}
         )
     elif fmt == "csv":
         csv_str = ReportGenerator.generate_csv(res)
         return Response(
             content=csv_str,
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="NTRO_Report_{clean_name}.csv"'}
+            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.csv"'}
         )
     elif fmt in ["md", "markdown"]:
         md_str = ReportGenerator.generate_markdown(res)
         return Response(
             content=md_str,
             media_type="text/markdown",
-            headers={"Content-Disposition": f'attachment; filename="NTRO_Report_{clean_name}.md"'}
+            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.md"'}
         )
     elif fmt == "json":
         json_str = ReportGenerator.generate_json(res)
         return Response(
             content=json_str,
             media_type="application/json",
-            headers={"Content-Disposition": f'attachment; filename="NTRO_Report_{clean_name}.json"'}
+            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.json"'}
         )
     elif fmt == "html":
         return await get_html_report()
