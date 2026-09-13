@@ -158,8 +158,8 @@
     <!-- Main Content Layout Grid -->
     <div class="flex-1 p-3 lg:p-4 grid grid-cols-12 gap-4 max-w-[1920px] mx-auto w-full">
 
-        <!-- Left Sidebar: Controls, Registry, and 12-Stage Pipeline Stepper (4 cols) -->
-        <aside class="col-span-12 lg:col-span-4 space-y-4 flex flex-col">
+        <!-- Left Sidebar: Controls, Registry, and 8-Stage Pipeline Stepper (4 cols) -->
+        <aside class="col-span-12 lg:col-span-4 space-y-4 flex flex-col self-start">
             
             <!-- Ingest & Synthesizer Card -->
             <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm theme-transition">
@@ -233,15 +233,15 @@
                         <p>Generates calibrated RF samples with multipath CFO, SNR variation, interleaving, and framing headers.</p>
                     </div>
 
-                    <button onclick="synthesizeSignal()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs py-2 rounded-lg shadow-sm flex items-center justify-center space-x-1.5 transition">
+                    <button onclick="synthesizeSignal()" id="btnSynthesize" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs py-2 rounded-lg shadow-sm flex items-center justify-center space-x-1.5 transition disabled:opacity-60 disabled:cursor-not-allowed">
                         <i data-lucide="play-circle" class="w-4 h-4"></i>
                         <span>Generate & Ingest Signal</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Captured Signals & Audit Log -->
-            <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm flex flex-col flex-1 min-h-[200px] theme-transition">
+            <!-- Captured Signals & Audit Log (Tight auto-height, no bottom whitespace) -->
+            <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm flex flex-col theme-transition">
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
                         <i data-lucide="archive" class="w-4 h-4 text-emerald-500 dark:text-emerald-400"></i>
@@ -252,17 +252,17 @@
                     </button>
                 </div>
                 
-                <div class="overflow-y-auto max-h-48 space-y-2 pr-1 flex-1" id="fileRegistryList">
+                <div class="overflow-y-auto max-h-56 space-y-2 pr-1" id="fileRegistryList">
                     <!-- Populated dynamically via JS -->
                 </div>
             </div>
 
-            <!-- Pipeline 12-Stage Execution Stepper & Latency Trace -->
+            <!-- Pipeline 8-Stage Execution Stepper & Latency Trace -->
             <div class="bg-tactical-card border border-tactical-border rounded-xl p-4 shadow-sm theme-transition">
                 <div class="flex items-center justify-between mb-2.5">
                     <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center space-x-1.5">
                         <i data-lucide="cpu" class="w-4 h-4 text-sky-500 dark:text-sky-400"></i>
-                        <span>12-Stage DSP Execution Trace</span>
+                        <span>8-Stage Core DSP Execution Trace</span>
                     </h3>
                     <span id="traceTotalBadge" class="text-[10px] mono-font font-bold text-sky-600 dark:text-sky-400">-- ms Total</span>
                 </div>
@@ -907,9 +907,16 @@
 
         function renderAllVisuals() {
             if (!currentAnalysisData) return;
-            renderWaveformChart(currentAnalysisData.waveform);
-            renderPsdPlot(currentAnalysisData.psd);
-            renderSpectrogramPlot(currentAnalysisData.spectrogram);
+            // Only render the active tab to prevent Plotly blockage on hidden containers
+            if (currentTab === 'waveform') {
+                renderWaveformChart(currentAnalysisData.waveform);
+            } else if (currentTab === 'psd') {
+                renderPsdPlot(currentAnalysisData.psd);
+                setTimeout(() => { if (typeof Plotly !== 'undefined') Plotly.Plots.resize('psdPlot'); }, 30);
+            } else if (currentTab === 'spectrogram') {
+                renderSpectrogramPlot(currentAnalysisData.spectrogram);
+                setTimeout(() => { if (typeof Plotly !== 'undefined') Plotly.Plots.resize('specPlot'); }, 30);
+            }
             renderConstellationPlot(currentAnalysisData.synchronization);
             renderAmcProbChart(currentAnalysisData.amc.probabilities);
         }
@@ -924,17 +931,17 @@
                 container.innerHTML = '';
                 
                 if (!data.files || data.files.length === 0) {
-                    container.innerHTML = '<div class="text-center py-6 text-slate-400 dark:text-slate-500 text-xs italic">No files stored yet. Upload a file above.</div>';
+                    container.innerHTML = '<div class="text-center py-4 text-slate-400 dark:text-slate-500 text-xs italic">No captures stored yet. Upload a file or generate a test signal above.</div>';
                     return;
                 }
 
                 data.files.forEach(f => {
                     const isActive = f.file_id === data.active_file_id;
                     const card = document.createElement('div');
-                    card.className = `p-2.5 rounded-xl border transition flex flex-col space-y-1.5 text-xs ${
+                    card.className = `p-2.5 rounded-xl border transition flex flex-col space-y-1.5 text-xs cursor-pointer ${
                         isActive 
-                            ? 'bg-sky-100/90 dark:bg-sky-950/60 border-sky-400 dark:border-sky-500/60 shadow-xs' 
-                            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                            ? 'bg-sky-100/90 dark:bg-sky-950/60 border-sky-400 dark:border-sky-500/60 shadow-xs ring-1 ring-sky-500/30' 
+                            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-sky-300 dark:hover:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/40'
                     }`;
 
                     const summaryText = f.analysis_summary 
@@ -949,6 +956,13 @@
                         timeDisplay = f.upload_timestamp.includes('T') ? f.upload_timestamp.split('T')[1].slice(0, 8) : f.upload_timestamp.slice(0, 8);
                     }
 
+                    // Entire card activates file when clicked
+                    card.onclick = (e) => {
+                        if (!e.target.closest('button')) {
+                            selectFile(f.file_id, card.querySelector('.btn-analyze'));
+                        }
+                    };
+
                     card.innerHTML = `
                         <div class="flex items-center justify-between">
                             <span class="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[170px]" title="${f.filename}">${f.filename}</span>
@@ -961,10 +975,10 @@
                         <div class="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200 dark:border-slate-800">
                             <div>${summaryText}</div>
                             <div class="flex items-center space-x-1">
-                                <button onclick="selectFile('${f.file_id}', this)" class="text-[10px] font-bold text-sky-700 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded transition">
+                                <button onclick="event.stopPropagation(); selectFile('${f.file_id}', this)" class="btn-analyze text-[10px] font-bold text-sky-700 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded transition">
                                     Analyze
                                 </button>
-                                <button onclick="deleteFile('${f.file_id}')" class="text-[10px] text-slate-400 hover:text-rose-500 p-0.5 transition" title="Delete">
+                                <button onclick="event.stopPropagation(); deleteFile('${f.file_id}')" class="text-[10px] text-slate-400 hover:text-rose-500 p-0.5 transition" title="Delete">
                                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                 </button>
                             </div>
@@ -980,7 +994,10 @@
 
         async function selectFile(fileId, btnEl) {
             const origText = btnEl ? btnEl.innerText : 'Analyze';
-            if (btnEl) btnEl.innerText = 'Analyzing...';
+            if (btnEl) {
+                btnEl.innerText = 'Analyzing...';
+                btnEl.disabled = true;
+            }
             try {
                 const res = await fetch('/api/v1/files/select', {
                     method: 'POST',
@@ -998,7 +1015,10 @@
                 console.error("Failed to select file:", err);
                 alert("Failed to analyze file: " + err.message);
             } finally {
-                if (btnEl) btnEl.innerText = origText;
+                if (btnEl) {
+                    btnEl.innerText = origText;
+                    btnEl.disabled = false;
+                }
             }
         }
 
@@ -1034,6 +1054,12 @@
 
         async function synthesizeSignal() {
             const preset = document.getElementById('synthPresetSelect').value;
+            const btn = document.getElementById('btnSynthesize');
+            const origHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span><span>Synthesizing...</span>`;
+            }
             try {
                 const res = await fetch('/api/v1/signals/synthesize', {
                     method: 'POST',
@@ -1044,22 +1070,46 @@
                 if (data.status === 'SUCCESS') {
                     renderPipelineResults(data.analysis);
                     await refreshFileRegistry();
+                } else {
+                    alert("Synthesis error: " + (data.message || "Unknown error"));
                 }
             } catch (err) {
                 console.error("Synthesis failed:", err);
+                alert("Synthesis failed: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    lucide.createIcons();
+                }
             }
         }
 
         async function reRunPipeline() {
+            const btn = document.getElementById('runPipelineBtn');
+            const origHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `<span class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span><span>Running...</span>`;
+            }
             try {
                 const res = await fetch('/api/v1/pipeline/run', { method: 'POST' });
                 const data = await res.json();
                 if (data.status !== 'ERROR') {
                     renderPipelineResults(data);
                     await refreshFileRegistry();
+                } else {
+                    alert("Pipeline error: " + (data.message || "Please upload or select a signal first."));
                 }
             } catch (err) {
                 console.error("Pipeline run failed:", err);
+                alert("Pipeline run failed: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    lucide.createIcons();
+                }
             }
         }
 
@@ -1446,7 +1496,8 @@
         }
 
         function downloadReport() {
-            window.location.href = `/api/v1/report/export?format=${selectedFormat}`;
+            const fileIdParam = currentAnalysisData && currentAnalysisData.file_id ? `&file_id=${currentAnalysisData.file_id}` : '';
+            window.location.href = `/api/v1/report/export?format=${selectedFormat}${fileIdParam}`;
             closeExportModal();
         }
 
@@ -1456,7 +1507,11 @@
             const fileInput = document.getElementById('fileInput');
 
             dropZone.onclick = () => fileInput.click();
-            fileInput.onchange = (e) => handleFileUpload(e.target.files[0]);
+            fileInput.onchange = (e) => {
+                if (e.target.files && e.target.files.length) {
+                    handleFileUpload(e.target.files[0]);
+                }
+            };
 
             dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-sky-500'); };
             dropZone.ondragleave = () => { dropZone.classList.remove('border-sky-500'); };
@@ -1469,6 +1524,18 @@
 
         async function handleFileUpload(file) {
             if (!file) return;
+            const dropZone = document.getElementById('dropZone');
+            const origHtml = dropZone ? dropZone.innerHTML : '';
+            if (dropZone) {
+                dropZone.innerHTML = `
+                    <div class="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/80 border border-sky-300 dark:border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto mb-2 animate-pulse">
+                        <span class="inline-block w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></span>
+                    </div>
+                    <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Ingesting & Analyzing ${file.name}...</p>
+                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Executing 8-stage DSP pipeline...</p>
+                `;
+            }
+
             const fsVal = document.getElementById('uploadSampleRate').value;
             const fcText = document.getElementById('uploadCenterFreq').value;
             let fcVal = 434500000;
@@ -1493,9 +1560,17 @@
                 if (data.status === 'SUCCESS') {
                     renderPipelineResults(data.analysis);
                     await refreshFileRegistry();
+                } else {
+                    alert("Upload analysis error: " + (data.message || "Unknown error"));
                 }
             } catch (err) {
                 console.error("File upload failed:", err);
+                alert("File upload failed: " + err.message);
+            } finally {
+                if (dropZone) {
+                    dropZone.innerHTML = origHtml;
+                    lucide.createIcons();
+                }
             }
         }
     </script>

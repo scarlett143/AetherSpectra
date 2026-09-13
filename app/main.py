@@ -23,17 +23,30 @@ from app.dsp.noise_estimator import NoiseEstimator
 from app.dsp.symbol_demodulator import SymbolDemodulator
 from app.dsp.signal_classifier import SignalClassifier
 
+import math
+
 def to_serializable(obj):
     if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, (np.floating, np.float32, np.float64)):
-        return float(obj)
-    elif isinstance(obj, (np.integer, np.int32, np.int64, np.uint8)):
+        cleaned = np.nan_to_num(obj, nan=0.0, posinf=999.0, neginf=-999.0)
+        return cleaned.tolist()
+    elif isinstance(obj, (float, np.floating, np.float32, np.float64)):
+        val = float(obj)
+        if math.isnan(val):
+            return 0.0
+        elif math.isinf(val):
+            return 999.0 if val > 0 else -999.0
+        return val
+    elif isinstance(obj, (int, np.integer, np.int32, np.int64, np.uint8)):
         return int(obj)
     elif isinstance(obj, (np.bool_, bool)):
         return bool(obj)
     elif isinstance(obj, (np.complex64, np.complex128, complex)):
-        return {"real": float(obj.real), "imag": float(obj.imag)}
+        r = float(obj.real)
+        i = float(obj.imag)
+        return {
+            "real": 0.0 if math.isnan(r) or math.isinf(r) else r,
+            "imag": 0.0 if math.isnan(i) or math.isinf(i) else i
+        }
     elif isinstance(obj, dict):
         return {k: to_serializable(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple)):
@@ -205,11 +218,11 @@ def execute_pipeline_on_iq(raw_iq: np.ndarray, fs: float, fc: float, filename: s
 
     total_latency = round((time.time() - start_time) * 1000, 2)
 
-    # Time-series Waveform samples for charting
-    wf_samples = min(len(filtered_iq), 600)
-    wf_i = np.real(filtered_iq[:wf_samples]).tolist()
-    wf_q = np.imag(filtered_iq[:wf_samples]).tolist()
-    wf_t = (np.arange(wf_samples) / fs * 1000.0).tolist()
+    # Time-series Waveform samples for charting (rounded for light JSON)
+    wf_samples = min(len(filtered_iq), 500)
+    wf_i = np.round(np.real(filtered_iq[:wf_samples]), 3).tolist()
+    wf_q = np.round(np.imag(filtered_iq[:wf_samples]), 3).tolist()
+    wf_t = np.round(np.arange(wf_samples) / fs * 1000.0, 3).tolist()
 
     result = {
         "file_id": file_id,
@@ -258,8 +271,8 @@ def execute_pipeline_on_iq(raw_iq: np.ndarray, fs: float, fc: float, filename: s
             "rms_level": filter_stats["rms_level"]
         },
         "synchronization": {
-            "constellation_i": sync_res["constellation_i"],
-            "constellation_q": sync_res["constellation_q"],
+            "constellation_i": [round(float(v), 3) for v in sync_res["constellation_i"]],
+            "constellation_q": [round(float(v), 3) for v in sync_res["constellation_q"]],
             "evm_rms_pct": sync_res["evm_rms_pct"],
             "evm_db": sync_res["evm_db"],
             "carrier_lock_status": sync_res["carrier_lock_status"],
@@ -506,9 +519,37 @@ async def run_pipeline():
     return analysis
 
 @app.get("/api/v1/report/export")
-async def export_report(format: str = Query("pdf")):
-    """Unified endpoint to export reports in PDF, JSON, MD, DOCX, CSV, or HTML format."""
+async def export_report(format: str = Query("pdf"), file_id: str | None = Query(None)):
+    """Unified endpoint to export reports in PDF, JSON, MD, DOCX, CSV, or HTML format with serverless state recovery."""
     res = ACTIVE_SESSION.get("pipeline_results")
+    if not res and file_id:
+        record = FileRegistry.get_by_id(file_id)
+        if record:
+            try:
+                file_bytes = FileRegistry.get_file_bytes(file_id)
+                if file_bytes:
+                    iq, fs_det, fmt_desc = SignalLoader.load_from_bytes(file_bytes, filename=record["filename"], default_fs=record.get("sample_rate", 2.0e6))
+                else:
+                    iq, fs_det, fmt_desc = SignalLoader.load_from_disk(record["stored_path"], default_fs=record.get("sample_rate", 2.0e6))
+                res = execute_pipeline_on_iq(iq, fs_det, record.get("center_freq", 434.5e6), record["filename"], file_id)
+                ACTIVE_SESSION["pipeline_results"] = res
+            except Exception:
+                pass
+    if not res:
+        files = FileRegistry.list_all()
+        if files:
+            record = files[0]
+            try:
+                file_bytes = FileRegistry.get_file_bytes(record["file_id"])
+                if file_bytes:
+                    iq, fs_det, fmt_desc = SignalLoader.load_from_bytes(file_bytes, filename=record["filename"], default_fs=record.get("sample_rate", 2.0e6))
+                else:
+                    iq, fs_det, fmt_desc = SignalLoader.load_from_disk(record["stored_path"], default_fs=record.get("sample_rate", 2.0e6))
+                res = execute_pipeline_on_iq(iq, fs_det, record.get("center_freq", 434.5e6), record["filename"], record["file_id"])
+                ACTIVE_SESSION["pipeline_results"] = res
+            except Exception:
+                pass
+
     if not res:
         return JSONResponse({"status": "EMPTY", "message": "No active signal analysis results available. Upload/select a signal first."}, status_code=400)
     

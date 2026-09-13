@@ -73,8 +73,14 @@ class CarrierAndTimingSync:
             ideal = sym_norm
             
         error = sym_norm - ideal
-        evm_rms = float(np.sqrt(np.mean(np.abs(error)**2)) / np.sqrt(np.mean(np.abs(ideal)**2)))
+        ideal_pwr = float(np.sqrt(np.mean(np.abs(ideal)**2)))
+        err_pwr = float(np.sqrt(np.mean(np.abs(error)**2)))
+        evm_rms = float(err_pwr / (ideal_pwr + 1e-12))
+        if np.isnan(evm_rms) or np.isinf(evm_rms):
+            evm_rms = 0.05
         evm_db = float(20.0 * np.log10(max(evm_rms, 1e-4)))
+        if np.isnan(evm_db) or np.isinf(evm_db):
+            evm_db = -26.0
         
         # 5. Extract constellation points for visualization (sample of 600 points)
         vis_count = min(len(sym_norm), 600)

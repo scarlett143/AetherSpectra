@@ -26,7 +26,7 @@ class FECSuite:
                 b1 = bin((s | (in_bit << 6)) & 0x79).count('1') % 2
                 transitions[(s, in_bit)] = (next_state, b0, b1)
 
-        num_pairs = min(len(llrs) // 2, 2000)
+        num_pairs = min(len(llrs) // 2, 600)
         history = np.zeros((num_pairs, num_states), dtype=np.uint8)
         
         for t in range(num_pairs):

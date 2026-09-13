@@ -37,25 +37,22 @@ class FFTAnalyzer:
         arith_mean = np.mean(mag) + 1e-12
         spectral_flatness = float(geom_mean / arith_mean)
 
-        # 4. Welch PSD (computed for persistent display)
-        n_seg = min(len(iq), 2048)
+        # 4. Welch PSD (computed for persistent display - optimized to 512 points)
+        n_seg = min(len(iq), 512)
         if is_real:
             f_welch, pxx = signal.welch(np.real(iq), fs=sample_rate, nperseg=n_seg, return_onesided=True, scaling='density')
             pxx_db = 10.0 * np.log10(np.maximum(pxx, 1e-12))
-            psd_data = {'freqs': f_welch.tolist(), 'psd_db': pxx_db.tolist(), 'is_onesided': True}
+            psd_data = {'freqs': np.round(f_welch, 1).tolist(), 'psd_db': np.round(pxx_db, 2).tolist(), 'is_onesided': True}
         else:
             f_welch, pxx = signal.welch(iq, fs=sample_rate, nperseg=n_seg, return_onesided=False, scaling='density')
             f_welch_sh = np.fft.fftshift(f_welch)
             pxx_sh = np.fft.fftshift(pxx)
             pxx_db = 10.0 * np.log10(np.maximum(pxx_sh, 1e-12))
-            psd_data = {'freqs': f_welch_sh.tolist(), 'psd_db': pxx_db.tolist(), 'is_onesided': False}
+            psd_data = {'freqs': np.round(f_welch_sh, 1).tolist(), 'psd_db': np.round(pxx_db, 2).tolist(), 'is_onesided': False}
 
-        # 5. STFT 2D Spectrogram
-        if sample_rate <= 48000:
-            stft_seg = min(len(iq), 512)
-        else:
-            stft_seg = min(len(iq), 1024)
-        stft_ovr = int(stft_seg * 0.75)
+        # 5. STFT 2D Spectrogram (High-performance display decimation)
+        stft_seg = min(len(iq), 256)
+        stft_ovr = int(stft_seg * 0.5)
 
         if is_real:
             f_spec, t_spec, sxx = signal.spectrogram(np.real(iq), fs=sample_rate, nperseg=stft_seg, noverlap=stft_ovr, return_onesided=True, mode='magnitude')
@@ -70,10 +67,21 @@ class FFTAnalyzer:
             sxx_sh = np.fft.fftshift(sxx, axes=0)
             sxx_db = 20.0 * np.log10(np.maximum(sxx_sh, 1e-6))
 
-        if len(t_spec) > 400:
-            step = int(np.ceil(len(t_spec) / 400))
-            t_spec = t_spec[::step]
-            sxx_db = sxx_db[:, ::step]
+        # Downsample time bins if needed for lightning-fast frontend rendering
+        if len(t_spec) > 120:
+            step_t = int(np.ceil(len(t_spec) / 120))
+            t_spec = t_spec[::step_t]
+            sxx_db = sxx_db[:, ::step_t]
+
+        # Downsample frequency bins to 128 bins maximum
+        if len(f_spec) > 128:
+            step_f = int(np.ceil(len(f_spec) / 128))
+            f_spec = f_spec[::step_f]
+            sxx_db = sxx_db[::step_f, :]
+
+        sxx_db = np.round(sxx_db, 1)
+        t_spec = np.round(t_spec, 4)
+        f_spec = np.round(f_spec, 1)
 
         vmin = float(np.percentile(sxx_db, 30))
         vmax = float(np.percentile(sxx_db, 99.8))

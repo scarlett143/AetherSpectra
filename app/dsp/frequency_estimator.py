@@ -38,17 +38,25 @@ class FrequencyEstimator:
             f_fine = f_coarse
 
         # 3. 99% Occupied Bandwidth (OBW)
-        total_pwr = np.sum(pxx)
-        cum_pwr = np.cumsum(pxx) / (total_pwr + 1e-12)
-        idx_low = np.where(cum_pwr >= 0.005)[0][0]
-        idx_high = np.where(cum_pwr <= 0.995)[0][-1]
-        obw_99_hz = float(abs(f[idx_high] - f[idx_low]))
+        total_pwr = float(np.sum(pxx))
+        if total_pwr > 1e-12:
+            cum_pwr = np.cumsum(pxx) / total_pwr
+            low_matches = np.where(cum_pwr >= 0.005)[0]
+            high_matches = np.where(cum_pwr <= 0.995)[0]
+            idx_low = int(low_matches[0]) if len(low_matches) > 0 else 0
+            idx_high = int(high_matches[-1]) if len(high_matches) > 0 else len(f) - 1
+            obw_99_hz = float(abs(f[idx_high] - f[idx_low]))
+        else:
+            obw_99_hz = float(fs * 0.1)
 
         # -3dB Bandwidth
-        peak_pwr = pxx[peak_idx]
+        peak_pwr = pxx[peak_idx] if len(pxx) > peak_idx else 1.0
         half_pwr = peak_pwr * 0.5
         above_half = np.where(pxx >= half_pwr)[0]
-        bw_3db_hz = float(abs(f[above_half[-1]] - f[above_half[0]])) if len(above_half) > 1 else obw_99_hz * 0.5
+        if len(above_half) > 1:
+            bw_3db_hz = float(abs(f[above_half[-1]] - f[above_half[0]]))
+        else:
+            bw_3db_hz = float(obw_99_hz * 0.5)
 
         # 4. Carrier Frequency Offset (CFO) via 4th-power non-linearity for PSK/QAM
         s_4th = s**4

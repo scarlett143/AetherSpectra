@@ -157,8 +157,8 @@ class SyntheticSignalGenerator:
                  
         rx_signal = cfo_signal + noise
         
-        # Trim / pad to standard length
-        max_samples = 100_000
+        # Trim / pad to standard length (optimized for fast pipeline execution & instant transfer)
+        max_samples = 32_000
         if len(rx_signal) > max_samples:
             rx_signal = rx_signal[:max_samples]
         elif len(rx_signal) < max_samples:
