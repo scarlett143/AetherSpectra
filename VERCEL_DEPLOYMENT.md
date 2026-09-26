@@ -1,6 +1,6 @@
-# AetherSpectra // Autonomous SIGINT & Telemetry Platform - Vercel Deployment Guide
+# ELVYN // Autonomous SIGINT & Telemetry Platform - Vercel Deployment Guide
 
-**AetherSpectra** is an autonomous 8-stage Signal Intelligence (SIGINT), blind demodulation, Automatic Modulation Classification (AMC), and telemetry extraction platform configured for seamless deployment on **Vercel Serverless**.
+**ELVYN** is an autonomous 8-stage Signal Intelligence (SIGINT), blind demodulation, Automatic Modulation Classification (AMC), and telemetry extraction platform configured for seamless deployment on **Vercel Serverless**.
 
 ---
 
@@ -34,7 +34,7 @@
 
 3. **Deploy from project directory**:
    ```bash
-   cd /Users/rithuliniyan/sih26147_workbench
+   cd /Users/rithuliniyan/ELVYN
    vercel
    ```
    * Follow the interactive prompts (Accept defaults for Framework preset: `Other`).
@@ -51,9 +51,9 @@
    ```bash
    git init
    git add .
-   git commit -m "feat: AetherSpectra v3.0 Vercel deployable platform"
+   git commit -m "feat: ELVYN v3.0 Vercel deployable platform"
    git branch -M main
-   git remote add origin https://github.com/<YOUR_USERNAME>/aetherspectra.git
+   git remote add origin https://github.com/<YOUR_USERNAME>/ELVYN.git
    git push -u origin main
    ```
 

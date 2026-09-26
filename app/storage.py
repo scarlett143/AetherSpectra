@@ -6,7 +6,7 @@ import shutil
 
 # In serverless environments (like Vercel), only /tmp is writable
 if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-    DATA_DIR = "/tmp/aetherspectra_data"
+    DATA_DIR = "/tmp/elvyn_data"
 else:
     DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 

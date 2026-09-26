@@ -55,7 +55,7 @@ def to_serializable(obj):
         return list(obj)
     return obj
 
-app = FastAPI(title="AetherSpectra Signal Intelligence Platform", version="3.0")
+app = FastAPI(title="ELVYN Signal Intelligence Platform", version="3.0")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -65,7 +65,7 @@ try:
     from app.templates_embedded import get_embedded_index_html, get_embedded_logo_svg
 except ImportError:
     def get_embedded_index_html():
-        return "<!DOCTYPE html><html><head><title>AetherSpectra</title></head><body><h1>AetherSpectra Platform</h1></body></html>"
+        return "<!DOCTYPE html><html><head><title>ELVYN</title></head><body><h1>ELVYN Platform</h1></body></html>"
     def get_embedded_logo_svg():
         return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='#0284C7'/></svg>"
 
@@ -109,7 +109,7 @@ async def serve_favicon():
 async def health_check():
     return {
         "status": "ONLINE",
-        "platform": "AetherSpectra",
+        "platform": "ELVYN",
         "version": "3.0",
         "environment": "serverless" if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) else "local"
     }
@@ -134,7 +134,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             return HTMLResponse(content=get_embedded_index_html(), status_code=200)
         except Exception:
             return HTMLResponse(
-                content=f"<!DOCTYPE html><html><body><h2>AetherSpectra</h2><p>Operational Fallback. Info: {str(exc)}</p></body></html>",
+                content=f"<!DOCTYPE html><html><body><h2>ELVYN</h2><p>Operational Fallback. Info: {str(exc)}</p></body></html>",
                 status_code=200
             )
     return JSONResponse(
@@ -353,7 +353,7 @@ async def index(request: Request):
         return HTMLResponse(content=get_embedded_index_html(), status_code=200)
     except Exception as e:
         return HTMLResponse(
-            content=f"<!DOCTYPE html><html><head><title>AetherSpectra</title></head><body style='background:#090D16;color:#E2E8F0;font-family:sans-serif;padding:2rem;'><h2>AetherSpectra SIGINT Platform</h2><p>Operational Fallback Active: {str(e)}</p></body></html>",
+            content=f"<!DOCTYPE html><html><head><title>ELVYN</title></head><body style='background:#090D16;color:#E2E8F0;font-family:sans-serif;padding:2rem;'><h2>ELVYN SIGINT Platform</h2><p>Operational Fallback Active: {str(e)}</p></body></html>",
             status_code=200
         )
 
@@ -561,35 +561,35 @@ async def export_report(format: str = Query("pdf"), file_id: str | None = Query(
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.pdf"'}
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_Report_{clean_name}.pdf"'}
         )
     elif fmt == "docx":
         docx_bytes = ReportGenerator.generate_docx(res)
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.docx"'}
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_Report_{clean_name}.docx"'}
         )
     elif fmt == "csv":
         csv_str = ReportGenerator.generate_csv(res)
         return Response(
             content=csv_str,
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.csv"'}
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_Report_{clean_name}.csv"'}
         )
     elif fmt in ["md", "markdown"]:
         md_str = ReportGenerator.generate_markdown(res)
         return Response(
             content=md_str,
             media_type="text/markdown",
-            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.md"'}
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_Report_{clean_name}.md"'}
         )
     elif fmt == "json":
         json_str = ReportGenerator.generate_json(res)
         return Response(
             content=json_str,
             media_type="application/json",
-            headers={"Content-Disposition": f'attachment; filename="AetherSpectra_Report_{clean_name}.json"'}
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_Report_{clean_name}.json"'}
         )
     elif fmt == "html":
         return await get_html_report()
@@ -663,7 +663,7 @@ async def get_html_report():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AetherSpectra // Autonomous SIGINT & Telemetry Recovery Dossier - {filename}</title>
+        <title>ELVYN // Autonomous SIGINT & Telemetry Recovery Dossier - {filename}</title>
         <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
         <!-- Plotly CDN for big panel charts -->
         <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
@@ -683,14 +683,14 @@ async def get_html_report():
         <!-- Report Header -->
         <div class="card border-sky-500/30 flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center space-x-4">
-                <img src="/static/logo.svg" alt="AetherSpectra Logo" class="w-12 h-12">
+                <img src="/static/logo.svg" alt="ELVYN Logo" class="w-12 h-12">
                 <div>
                     <div class="flex items-center space-x-3">
-                        <span class="text-xs bg-sky-950 border border-sky-500/40 text-sky-300 font-bold px-2.5 py-1 rounded tracking-wider">AETHERSPECTRA DEFENSE & RF LABS</span>
+                        <span class="text-xs bg-sky-950 border border-sky-500/40 text-sky-300 font-bold px-2.5 py-1 rounded tracking-wider">ELVYN DEFENSE & RF LABS</span>
                         <span class="text-xs bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold px-2.5 py-1 rounded">TACTICAL // 8-STAGE DSP</span>
                     </div>
                     <h1 class="text-xl sm:text-2xl font-black text-white mt-1.5 flex items-center gap-2">
-                        <span>AETHER</span><span class="text-sky-400 glow-cyan">SPECTRA</span>
+                        <span>ELV</span><span class="text-sky-400 glow-cyan">YN</span>
                         <span class="text-sm font-normal text-slate-400">| Signal Intelligence Dossier</span>
                     </h1>
                     <p class="text-xs text-slate-400 mt-0.5">Automated 8-Stage Filtering, FFT, Carrier/Timing Sync, Modulation Classification & Telemetry Recovery</p>

@@ -45,7 +45,7 @@ class ReportGenerator:
         latencies = data.get("latencies", {})
 
         md = []
-        md.append("# AetherSpectra // Autonomous Signal Intelligence & Telemetry Dossier")
+        md.append("# ELVYN // Autonomous Signal Intelligence & Telemetry Dossier")
         md.append(f"**Target Ingest File:** `{filename}` | **File ID:** `{file_id}` | **Total Latency:** `{total_lat} ms`\n")
         md.append("---\n")
 
@@ -98,7 +98,7 @@ class ReportGenerator:
         md.append("### Raw Hex Byte Dump")
         md.append(f"```hex\n{telem.get('hex_dump', 'N/A')}\n```\n")
 
-        md.append("---\n*AetherSpectra Autonomous Signal Intelligence Platform*")
+        md.append("---\n*ELVYN Autonomous Signal Intelligence Platform*")
         return "\n".join(md)
 
     @staticmethod
@@ -107,7 +107,7 @@ class ReportGenerator:
         output = io.StringIO()
         writer = csv.writer(output)
 
-        writer.writerow(["AetherSpectra Signal Intelligence & Telemetry Analytics Dossier"])
+        writer.writerow(["ELVYN Signal Intelligence & Telemetry Analytics Dossier"])
         writer.writerow([])
 
         # Section 1: Metadata
@@ -160,7 +160,7 @@ class ReportGenerator:
 
         # Title
         title_p = doc.add_paragraph()
-        title_run = title_p.add_run("AETHER SPECTRA DEFENSE & RF SYSTEMS")
+        title_run = title_p.add_run("ELVYN DEFENSE & RF SYSTEMS")
         title_run.font.size = Pt(16)
         title_run.font.bold = True
         title_run.font.color.rgb = RGBColor(0x02, 0x84, 0xC7)
@@ -312,7 +312,7 @@ class ReportGenerator:
         story = []
 
         # Header Title
-        story.append(Paragraph("AETHER SPECTRA DEFENSE & RF SYSTEMS", title_style))
+        story.append(Paragraph("ELVYN DEFENSE & RF SYSTEMS", title_style))
         story.append(Paragraph("Autonomous Signal Intelligence & Telemetry Analytics Dossier", subtitle_style))
         story.append(Spacer(1, 8))
         story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0284C7'), spaceBefore=2, spaceAfter=8))
