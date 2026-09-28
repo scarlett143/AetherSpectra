@@ -3,6 +3,7 @@ import io
 import time
 import json
 import uuid
+import datetime
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -363,6 +364,44 @@ async def list_files():
     records = FileRegistry.list_all()
     return {"files": records, "count": len(records), "active_file_id": ACTIVE_SESSION["file_id"]}
 
+def process_file_by_id(file_id: str, set_as_active: bool = False) -> dict:
+    """Executes the full 8-stage DSP pipeline on a file in the registry and caches the result."""
+    record = FileRegistry.get_by_id(file_id)
+    if not record:
+        raise ValueError(f"File {file_id} not found in audit registry")
+
+    FileRegistry.update_status(file_id, "ANALYZING")
+    try:
+        file_bytes = FileRegistry.get_file_bytes(file_id)
+        if file_bytes is not None:
+            iq, fs_detected, fmt_desc = SignalLoader.load_from_bytes(
+                file_bytes, filename=record["filename"], default_fs=record.get("sample_rate", 2.0e6)
+            )
+        else:
+            iq, fs_detected, fmt_desc = SignalLoader.load_from_disk(
+                record["stored_path"], default_fs=record.get("sample_rate", 2.0e6)
+            )
+        
+        center_freq = record.get("center_freq", 434.5e6)
+        analysis = execute_pipeline_on_iq(iq, fs_detected, center_freq, record["filename"], file_id)
+        FileRegistry.set_analysis(file_id, analysis)
+
+        if set_as_active:
+            ACTIVE_SESSION["file_id"] = record["file_id"]
+            ACTIVE_SESSION["filename"] = record["filename"]
+            ACTIVE_SESSION["stored_path"] = record.get("stored_path")
+            ACTIVE_SESSION["raw_iq"] = iq
+            ACTIVE_SESSION["sample_rate"] = fs_detected
+            ACTIVE_SESSION["center_freq"] = center_freq
+            ACTIVE_SESSION["format_desc"] = fmt_desc
+            ACTIVE_SESSION["status"] = "ANALYZED"
+            ACTIVE_SESSION["pipeline_results"] = analysis
+
+        return analysis
+    except Exception as e:
+        FileRegistry.update_status(file_id, "ERROR")
+        raise e
+
 @app.post("/api/v1/files/upload")
 async def upload_file(
     file: UploadFile = File(...),
@@ -379,7 +418,8 @@ async def upload_file(
         filename=file.filename,
         file_bytes=file_bytes,
         sample_rate=sample_rate,
-        center_freq=center_freq
+        center_freq=center_freq,
+        status="ANALYZED"
     )
 
     # 2. Parse and stream signal from memory or stored disk file
@@ -395,50 +435,79 @@ async def upload_file(
     ACTIVE_SESSION["format_desc"] = fmt_desc
     ACTIVE_SESSION["status"] = "ANALYZED"
 
-    # 4. Execute pipeline
+    # 4. Execute pipeline and cache
     analysis = execute_pipeline_on_iq(iq, fs_detected, center_freq, record["filename"], record["file_id"])
+    FileRegistry.set_analysis(record["file_id"], analysis)
     ACTIVE_SESSION["pipeline_results"] = analysis
 
     return {
         "status": "SUCCESS",
-        "file_record": record,
+        "file_record": FileRegistry.get_by_id(record["file_id"]),
         "analysis": analysis
+    }
+
+@app.post("/api/v1/files/upload-batch")
+async def upload_batch(
+    files: list[UploadFile] = File(...),
+    sample_rate: float = Form(2.0e6),
+    center_freq: float = Form(434.5e6)
+):
+    """Ingests multiple files simultaneously and registers them with QUEUED status."""
+    uploaded_records = []
+    for f in files:
+        file_bytes = await f.read()
+        if len(file_bytes) == 0:
+            continue
+        record = FileRegistry.save_and_log_upload(
+            filename=f.filename,
+            file_bytes=file_bytes,
+            sample_rate=sample_rate,
+            center_freq=center_freq,
+            status="QUEUED"
+        )
+        uploaded_records.append(record)
+
+    return {
+        "status": "SUCCESS",
+        "uploaded_count": len(uploaded_records),
+        "files": uploaded_records
     }
 
 @app.post("/api/v1/files/select")
 async def select_file(payload: dict):
-    """Activates an existing file from the audit log and runs analysis."""
+    """Activates an existing file from the audit log, returning cached results or running DSP."""
     file_id = payload.get("file_id")
     record = FileRegistry.get_by_id(file_id)
     if not record:
         return JSONResponse({"status": "ERROR", "message": "File not found in audit registry"}, status_code=404)
 
+    cached_analysis = FileRegistry.get_analysis(file_id)
+    if cached_analysis:
+        ACTIVE_SESSION["file_id"] = record["file_id"]
+        ACTIVE_SESSION["filename"] = record["filename"]
+        ACTIVE_SESSION["stored_path"] = record.get("stored_path")
+        ACTIVE_SESSION["sample_rate"] = record.get("sample_rate", 2.0e6)
+        ACTIVE_SESSION["center_freq"] = record.get("center_freq", 434.5e6)
+        ACTIVE_SESSION["format_desc"] = record.get("format_detected", "Raw Baseband")
+        ACTIVE_SESSION["status"] = "ANALYZED"
+        ACTIVE_SESSION["pipeline_results"] = cached_analysis
+        return {
+            "status": "SUCCESS",
+            "file_record": record,
+            "analysis": cached_analysis,
+            "cached": True
+        }
+
     try:
-        file_bytes = FileRegistry.get_file_bytes(file_id)
-        if file_bytes is not None:
-            iq, fs_detected, fmt_desc = SignalLoader.load_from_bytes(file_bytes, filename=record["filename"], default_fs=record["sample_rate"])
-        else:
-            iq, fs_detected, fmt_desc = SignalLoader.load_from_disk(record["stored_path"], default_fs=record["sample_rate"])
+        analysis = process_file_by_id(file_id, set_as_active=True)
+        return {
+            "status": "SUCCESS",
+            "file_record": FileRegistry.get_by_id(file_id),
+            "analysis": analysis,
+            "cached": False
+        }
     except Exception as e:
-        return JSONResponse({"status": "ERROR", "message": f"Unable to read signal capture: {str(e)}"}, status_code=400)
-    
-    ACTIVE_SESSION["file_id"] = record["file_id"]
-    ACTIVE_SESSION["filename"] = record["filename"]
-    ACTIVE_SESSION["stored_path"] = record.get("stored_path")
-    ACTIVE_SESSION["raw_iq"] = iq
-    ACTIVE_SESSION["sample_rate"] = fs_detected
-    ACTIVE_SESSION["center_freq"] = record.get("center_freq", 434.5e6)
-    ACTIVE_SESSION["format_desc"] = fmt_desc
-    ACTIVE_SESSION["status"] = "ANALYZED"
-
-    analysis = execute_pipeline_on_iq(iq, fs_detected, record.get("center_freq", 434.5e6), record["filename"], record["file_id"])
-    ACTIVE_SESSION["pipeline_results"] = analysis
-
-    return {
-        "status": "SUCCESS",
-        "file_record": record,
-        "analysis": analysis
-    }
+        return JSONResponse({"status": "ERROR", "message": f"Unable to analyze capture: {str(e)}"}, status_code=400)
 
 @app.delete("/api/v1/files/{file_id}")
 async def delete_file(file_id: str):
@@ -494,6 +563,7 @@ async def synthesize_new_signal(payload: dict):
     ACTIVE_SESSION["status"] = "ANALYZED"
 
     analysis = execute_pipeline_on_iq(iq, sig["sample_rate"], sig["config"]["center_freq"], record["filename"], record["file_id"])
+    FileRegistry.set_analysis(record["file_id"], analysis)
     ACTIVE_SESSION["pipeline_results"] = analysis
 
     return {
@@ -517,6 +587,79 @@ async def run_pipeline():
     )
     ACTIVE_SESSION["pipeline_results"] = analysis
     return analysis
+
+@app.post("/api/v1/pipeline/run-file/{file_id}")
+async def run_pipeline_for_file(file_id: str):
+    """Executes the 8-stage DSP pipeline on a specific file from the queue."""
+    try:
+        analysis = process_file_by_id(file_id, set_as_active=True)
+        return {
+            "status": "SUCCESS",
+            "file_id": file_id,
+            "analysis": analysis
+        }
+    except Exception as e:
+        return JSONResponse({"status": "ERROR", "message": str(e)}, status_code=400)
+
+@app.post("/api/v1/pipeline/run-batch")
+async def run_batch_pipeline(payload: dict | None = None):
+    """Sequentially executes the 8-stage DSP pipeline across all queued or specified files."""
+    requested_ids = payload.get("file_ids") if payload and isinstance(payload, dict) else None
+    all_records = FileRegistry.list_all()
+    
+    if requested_ids and len(requested_ids) > 0:
+        target_ids = requested_ids
+    else:
+        queued_ids = [r["file_id"] for r in all_records if r.get("status") in ["QUEUED", "UPLOADED"]]
+        target_ids = queued_ids if queued_ids else [r["file_id"] for r in all_records]
+
+    results = []
+    is_first = True
+    for fid in target_ids:
+        try:
+            analysis = process_file_by_id(fid, set_as_active=is_first)
+            is_first = False
+            rec = FileRegistry.get_by_id(fid)
+            results.append({
+                "file_id": fid,
+                "filename": rec["filename"] if rec else fid,
+                "status": "ANALYZED",
+                "summary": rec.get("analysis_summary") if rec else None
+            })
+        except Exception as e:
+            results.append({
+                "file_id": fid,
+                "status": "ERROR",
+                "message": str(e)
+            })
+
+    return {
+        "status": "SUCCESS",
+        "processed_count": len(results),
+        "results": results
+    }
+
+@app.get("/api/v1/report/batch-export")
+async def export_batch_report(format: str = Query("csv")):
+    """Generates and downloads a consolidated Multi-Signal Intelligence Ledger."""
+    records = FileRegistry.list_all()
+    fmt = format.lower().strip()
+    timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if fmt == "json":
+        json_str = ReportGenerator.generate_batch_json(records)
+        return Response(
+            content=json_str,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_MultiSignal_Ledger_{timestamp_str}.json"'}
+        )
+    else:
+        csv_str = ReportGenerator.generate_batch_csv(records)
+        return Response(
+            content=csv_str,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="ELVYN_MultiSignal_Ledger_{timestamp_str}.csv"'}
+        )
 
 @app.get("/api/v1/report/export")
 async def export_report(format: str = Query("pdf"), file_id: str | None = Query(None)):

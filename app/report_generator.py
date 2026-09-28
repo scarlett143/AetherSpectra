@@ -1,6 +1,7 @@
 import io
 import csv
 import json
+import datetime
 from typing import Dict, Any
 
 from reportlab.lib.pagesizes import letter
@@ -398,3 +399,71 @@ class ReportGenerator:
 
         doc.build(story)
         return buffer.getvalue()
+
+    @staticmethod
+    def generate_batch_csv(records: list) -> str:
+        """Generates structured CSV report summarizing all captures in the audit registry."""
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        writer.writerow(["ELVYN Multi-Signal Intelligence Ledger - Batch Processing Summary"])
+        writer.writerow(["Generated Timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+        writer.writerow(["Total Captures", len(records)])
+        writer.writerow([])
+
+        # Table Header
+        writer.writerow([
+            "File ID",
+            "Filename",
+            "File Size",
+            "Sampling Rate (SPS)",
+            "Center Freq (Hz)",
+            "Format",
+            "Status",
+            "Identified Modulation",
+            "AMC Confidence (%)",
+            "SNR (dB)",
+            "Carrier Offset (kHz)",
+            "Occupied Bandwidth (kHz)",
+            "Carrier Lock",
+            "Classified Standard",
+            "Decoded Telemetry Preview"
+        ])
+
+        for r in records:
+            summary = r.get("analysis_summary") or {}
+            raw_telem = str(summary.get("decoded_telemetry", "N/A"))
+            telem_preview = (raw_telem[:60] + "...") if len(raw_telem) > 60 else raw_telem
+            writer.writerow([
+                r.get("file_id", "N/A"),
+                r.get("filename", "N/A"),
+                r.get("size_formatted", "N/A"),
+                r.get("sample_rate", "N/A"),
+                r.get("center_freq", "N/A"),
+                r.get("format_detected", "N/A"),
+                r.get("status", "QUEUED"),
+                summary.get("modulation", "Unprocessed"),
+                summary.get("confidence", "N/A"),
+                summary.get("snr_db", "N/A"),
+                summary.get("carrier_offset_khz", "N/A"),
+                summary.get("bandwidth_khz", "N/A"),
+                summary.get("carrier_lock", "N/A"),
+                summary.get("classified_standard", "N/A"),
+                telem_preview
+            ])
+
+        return output.getvalue()
+
+    @staticmethod
+    def generate_batch_json(records: list) -> str:
+        """Generates structured JSON batch summary."""
+        analyzed_count = sum(1 for r in records if r.get("status") == "ANALYZED")
+        batch_summary = {
+            "platform": "ELVYN",
+            "generated_at": datetime.datetime.now().isoformat(),
+            "total_records": len(records),
+            "analyzed_count": analyzed_count,
+            "queued_count": len(records) - analyzed_count,
+            "records": records
+        }
+        return json.dumps(batch_summary, indent=2)

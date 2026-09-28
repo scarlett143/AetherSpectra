@@ -24,7 +24,7 @@
 | **Live Web Platform** | **[https://aether-spectra.vercel.app/](https://aether-spectra.vercel.app/)** |
 | **Source Code Repository** | **[https://github.com/scarlett143/AetherSpectra](https://github.com/scarlett143/AetherSpectra)** |
 | **Target Interception Bands** | **HF (3–30 MHz), VHF (30–300 MHz), UHF (300 MHz–3 GHz), SHF (Microwave Satellite Links)** |
-| **Supported Ingestion Types** | **Raw .IQ (cf32, ci16, cu8), SigMF, Complex .WAV (PCM/Float RF), GNU Radio .dat, HDF5** |
+| **Supported Ingestion Types** | **Multi-File Batch Queue & Single Ingest: Raw .IQ (cf32, ci16, cu8), SigMF, Complex .WAV, GNU Radio .dat, HDF5** |
 | **Storage & Audit Subsystem** | **Physical disk persistence in `data/uploads/` with UUID registry in `data/registry.json` (serverless `/tmp` fallback)** |
 | **De-Interleaver Architecture**| **All 4 Mandated Classes: Block ($R \times C$), Convolutional (Forney/Ramsey), Diagonal, Pseudo-Random (LFSR)** |
 | **FEC Decoder Architecture** | **Full Suite: NASA Viterbi ($K=7, R=1/2$), Reed-Solomon (255,223 / 204,188), Concatenated RS+Viterbi, LDPC (Log-SPA)** |
@@ -377,22 +377,30 @@ The platform exposes an OpenAPI 3.1 compliant REST API for headless integration 
 | :--- | :--- | :--- | :--- | :--- |
 | **GET** | `/api/v1/files` | None | `{files: [], count: int, active_file_id: str}` | Returns all stored files and audit log registry records |
 | **POST** | `/api/v1/files/upload` | `multipart/form-data` (`file`, `sample_rate`, `center_freq`) | `{status, file_record, analysis}` | Persists capture to disk, logs in registry, executes DSP pipeline |
-| **POST** | `/api/v1/files/select` | `{"file_id": "UUID"}` | `{status, file_record, analysis}` | Selects existing capture from audit registry and re-analyzes |
+| **POST** | `/api/v1/files/upload-batch` | `multipart/form-data` (`files: list[UploadFile]`, `sample_rate`, `center_freq`) | `{status, uploaded_count, files: []}` | Enqueues multiple captures simultaneously with `QUEUED` status |
+| **POST** | `/api/v1/files/select` | `{"file_id": "UUID"}` | `{status, file_record, cached: bool, analysis}` | Selects existing capture from registry (instant <2ms response from cache if analyzed) |
 | **DELETE** | `/api/v1/files/{file_id}` | None | `{"status": "SUCCESS"\|"NOT_FOUND"}` | Wipes capture from disk and removes entry from registry |
 | **POST** | `/api/v1/files/clear` | None | `{"status": "SUCCESS", "message": str}` | Clears all physical files and wipes audit log registry |
 | **POST** | `/api/v1/signals/synthesize` | `{"profile": "Profile A"\|...}` | `{status, file_record, analysis}` | Synthesizes calibrated RF signal with fading and channel impairments |
+| **POST** | `/api/v1/pipeline/run-file/{file_id}` | None | `{status, file_id, analysis}` | Executes 8-stage DSP pipeline on a specific capture from the queue |
+| **POST** | `/api/v1/pipeline/run-batch` | `{"file_ids": ["UUID", ...]}` (optional) | `{status, processed_count, results: []}` | Sequentially executes 8-stage DSP pipeline across all queued captures |
 | **POST** | `/api/v1/pipeline/run` | None | Complete JSON analysis object | Re-executes DSP analysis pipeline on active in-memory signal |
 | **GET** | `/api/v1/report/html` | None | HTML document stream | Renders printable military-grade intelligence briefing dossier |
 | **GET** | `/api/v1/report/json` | None | Complete analysis JSON telemetry | Exports machine-readable raw telemetry for external intelligence tools |
+| **GET** | `/api/v1/report/batch-export` | `format=csv\|json` | CSV or JSON file stream | Generates and downloads consolidated Multi-Signal Intelligence Ledger across all captures |
 
-### Intelligence Dossier Multi-Format Export Formats
-Through `app/report_generator.py`, the active analysis can be exported across five standard document formats:
-- **PDF**: Formal NTRO Intelligence Dossier compiled via ReportLab with latency tables and execution breakdown.
-- **DOCX**: Microsoft Word report styled with custom table schemas and headers.
-- **HTML**: High-resolution standalone interactive briefing dossier with Plotly chart snapshots.
-- **Markdown**: GitHub-flavored technical briefing with parameter breakdown and hexadecimal bitstream dump.
-- **CSV**: Comma-separated tabular dataset of parameters, quality metrics, and cumulants.
-- **JSON**: Machine-readable hierarchical telemetry dictionary.
+### Intelligence Dossier & Consolidated Batch Ledger Exports
+Through `app/report_generator.py`, the platform provides dual-tier intelligence reporting:
+1. **Active Capture Dossier (Individual Signal Analysis)**:
+   - **PDF**: Formal NTRO Intelligence Dossier compiled via ReportLab with latency tables and execution breakdown.
+   - **DOCX**: Microsoft Word report styled with custom table schemas and headers.
+   - **HTML**: High-resolution standalone interactive briefing dossier with Plotly chart snapshots.
+   - **Markdown**: GitHub-flavored technical briefing with parameter breakdown and hexadecimal bitstream dump.
+   - **CSV**: Comma-separated tabular dataset of parameters, quality metrics, and cumulants.
+   - **JSON**: Machine-readable hierarchical telemetry dictionary.
+2. **Consolidated Batch Ledger (Workstation Audit Registry)**:
+   - **Batch CSV Ledger**: Formatted with accounting-department spreadsheet precision (Angela Martin approved), tabulating File ID, Filename, Size, Modulation, Confidence %, SNR, EVM, Bandwidth, Lock Status, and Telemetry across all captures.
+   - **Consolidated JSON Dossier**: Structured multi-signal intelligence registry export containing all files, timestamps, extracted parameters, and raw telemetry streams.
 
 ---
 

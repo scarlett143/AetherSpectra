@@ -202,8 +202,8 @@
                         <div class="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/80 border border-sky-300 dark:border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition">
                             <i data-lucide="file-up" class="w-5 h-5"></i>
                         </div>
-                        <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Drop .IQ, .WAV, or .RAW capture here</p>
-                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Or click to browse from local workstation</p>
+                        <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Drop .IQ, .WAV, or .RAW capture(s) here</p>
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Single or batch multi-file ingestion supported</p>
                         <div class="flex items-center justify-center space-x-1.5 mt-2.5">
                             <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.iq</span>
                             <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.wav</span>
@@ -211,7 +211,21 @@
                             <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.bin</span>
                             <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">.sigmf</span>
                         </div>
-                        <input type="file" id="fileInput" class="hidden" accept=".iq,.wav,.raw,.bin,.dat,.sigmf">
+                        <input type="file" id="fileInput" class="hidden" accept=".iq,.wav,.raw,.bin,.dat,.sigmf" multiple>
+                    </div>
+
+                    <!-- Batch Upload Progress Indicator -->
+                    <div id="batchUploadProgress" class="hidden p-2 rounded-lg bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60 text-[11px] text-sky-800 dark:text-sky-300">
+                        <div class="flex justify-between items-center mb-1">
+                            <span id="batchUploadLabel" class="font-bold flex items-center">
+                                <span class="inline-block w-3 h-3 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mr-1.5"></span>
+                                <span>Uploading captures...</span>
+                            </span>
+                            <span id="batchUploadPercent" class="mono-font font-bold">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div id="batchUploadBar" class="bg-sky-500 h-full w-0 transition-all duration-200"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -247,9 +261,26 @@
                         <i data-lucide="archive" class="w-4 h-4 text-emerald-500 dark:text-emerald-400"></i>
                         <span>Signal Captures Audit Log</span>
                     </h3>
-                    <button onclick="clearAllFiles()" class="text-[10px] text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 font-bold transition">
-                        Clear All
-                    </button>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="runBatchPipeline()" id="btnRunBatch" title="Run 8-Stage DSP across all queued captures" class="text-[10px] bg-sky-600 hover:bg-sky-500 text-white font-bold px-2 py-0.5 rounded shadow-xs transition flex items-center space-x-1">
+                            <i data-lucide="play" class="w-3 h-3"></i>
+                            <span>Run All</span>
+                        </button>
+                        <button onclick="clearAllFiles()" class="text-[10px] text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 font-bold transition">
+                            Clear All
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Batch Execution Progress Bar -->
+                <div id="batchExecutionProgress" class="hidden mb-2.5 p-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px]">
+                    <div class="flex justify-between items-center mb-1">
+                        <span id="batchExecLabel" class="font-bold text-slate-700 dark:text-slate-300">Processing file 1 of 3...</span>
+                        <span id="batchExecPercent" class="mono-font text-sky-500 font-bold">33%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div id="batchExecBar" class="bg-sky-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
                 </div>
                 
                 <div class="overflow-y-auto max-h-56 space-y-2 pr-1" id="fileRegistryList">
@@ -634,8 +665,8 @@
                         <i data-lucide="file-output" class="w-4 h-4"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-sm text-slate-900 dark:text-white">Export Intelligence Report</h3>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Select target report format for current mission analysis</p>
+                        <h3 class="font-bold text-sm text-slate-900 dark:text-white">Export Intelligence Deliverable</h3>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Export active mission dossier or consolidated batch ledger</p>
                     </div>
                 </div>
                 <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg transition">
@@ -643,9 +674,23 @@
                 </button>
             </div>
 
-            <!-- Modal Body: Format Selection Panel -->
-            <div class="p-6 space-y-4">
-                <div class="text-xs font-bold text-slate-700 dark:text-slate-300">Choose Export Format:</div>
+            <!-- Tab Switcher: Single Signal Dossier vs Batch Ledger -->
+            <div class="px-6 pt-3.5 pb-0">
+                <div class="flex space-x-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <button onclick="switchExportTab('single')" id="tabExportSingle" class="flex-1 py-1.5 px-3 rounded-md text-xs font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs transition flex items-center justify-center space-x-1.5">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-sky-500"></i>
+                        <span>Active Signal Dossier</span>
+                    </button>
+                    <button onclick="switchExportTab('batch')" id="tabExportBatch" class="flex-1 py-1.5 px-3 rounded-md text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition flex items-center justify-center space-x-1.5">
+                        <i data-lucide="archive" class="w-3.5 h-3.5 text-emerald-500"></i>
+                        <span>Consolidated Batch Ledger</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body 1: Single Signal Format Selection Panel -->
+            <div id="singleExportPanel" class="p-6 space-y-4">
+                <div class="text-xs font-bold text-slate-700 dark:text-slate-300">Choose Active Dossier Format:</div>
 
                 <!-- 5 Formats Grid -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="formatGrid">
@@ -732,6 +777,46 @@
                 </div>
             </div>
 
+            <!-- Modal Body 2: Batch Ledger Export Selection Panel -->
+            <div id="batchExportPanel" class="p-6 space-y-4 hidden">
+                <div class="text-xs font-bold text-slate-700 dark:text-slate-300">Choose Batch Ledger Format:</div>
+
+                <div class="grid grid-cols-1 gap-3">
+                    <!-- Batch CSV -->
+                    <div onclick="selectBatchExportFormat('csv')" id="batch-fmt-csv" class="format-card-batch border-2 border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 p-4 rounded-xl cursor-pointer transition flex items-start space-x-3.5">
+                        <div class="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="table" class="w-5 h-5"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">Batch CSV Ledger (Spreadsheet Precision)</span>
+                                <span class="text-[10px] mono-font font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">.csv</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Consolidated tabular ledger across all signal captures in registry. Includes Modulation, Confidence %, SNR (dB), EVM, Bandwidth, and Telemetry.</p>
+                        </div>
+                    </div>
+
+                    <!-- Batch JSON -->
+                    <div onclick="selectBatchExportFormat('json')" id="batch-fmt-json" class="format-card-batch border border-slate-200 dark:border-slate-800 hover:border-emerald-400 p-4 rounded-xl cursor-pointer transition flex items-start space-x-3.5">
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <i data-lucide="code" class="w-5 h-5"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-slate-900 dark:text-white">Consolidated JSON Dossier</span>
+                                <span class="text-[10px] mono-font font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400">.json</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Machine-readable aggregate dataset containing complete metadata, DSP summaries, and telemetry streams for programmatic ingestion.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 flex items-center space-x-2">
+                    <i data-lucide="info" class="w-4 h-4 text-emerald-500 shrink-0"></i>
+                    <span>Exports all signal captures currently held in the session audit registry.</span>
+                </div>
+            </div>
+
             <!-- Modal Footer Actions -->
             <div class="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-end space-x-2">
                 <button onclick="closeExportModal()" class="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
@@ -752,6 +837,8 @@
         let waveformChartInstance = null;
         let amcProbChartInstance = null;
         let selectedFormat = 'pdf';
+        let selectedBatchFormat = 'csv';
+        let exportTab = 'single';
         let isVisualizerExpanded = false;
         let currentTab = 'waveform';
 
@@ -944,9 +1031,21 @@
                             : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-sky-300 dark:hover:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/40'
                     }`;
 
+                    const st = f.status || (f.analysis_summary ? 'ANALYZED' : 'QUEUED');
+                    let statusBadge = '';
+                    if (st === 'ANALYZED') {
+                        statusBadge = `<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800/60">ANALYZED</span>`;
+                    } else if (st === 'ANALYZING') {
+                        statusBadge = `<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-400 border border-sky-300 dark:border-sky-800/60 animate-pulse flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping inline-block mr-1"></span>ANALYZING</span>`;
+                    } else if (st === 'ERROR') {
+                        statusBadge = `<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800/60">ERROR</span>`;
+                    } else {
+                        statusBadge = `<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800/60">QUEUED</span>`;
+                    }
+
                     const summaryText = f.analysis_summary 
-                        ? `<span class="text-emerald-600 dark:text-emerald-400 font-bold">${f.analysis_summary.modulation || 'Analyzed'}</span> <span class="text-slate-500">(${f.analysis_summary.snr_db !== undefined ? f.analysis_summary.snr_db : '--'} dB SNR)</span>`
-                        : `<span class="text-slate-400 dark:text-slate-500 italic">Unprocessed</span>`;
+                        ? `<span class="text-emerald-600 dark:text-emerald-400 font-bold">${f.analysis_summary.modulation || 'Analyzed'}</span> <span class="text-slate-500 dark:text-slate-400">(${f.analysis_summary.snr_db !== undefined ? f.analysis_summary.snr_db : '--'} dB SNR)</span>`
+                        : `<span class="text-slate-400 dark:text-slate-500 italic">${st === 'ANALYZING' ? 'Processing DSP...' : (st === 'ERROR' ? 'Processing failed' : 'Awaiting DSP')}</span>`;
 
                     let timeDisplay = '--:--:--';
                     if (f.upload_time_formatted && typeof f.upload_time_formatted === 'string') {
@@ -963,10 +1062,15 @@
                         }
                     };
 
+                    const actionBtnLabel = st === 'ANALYZED' ? 'View' : (st === 'ANALYZING' ? 'Running...' : (st === 'ERROR' ? 'Retry' : 'Analyze'));
+
                     card.innerHTML = `
                         <div class="flex items-center justify-between">
-                            <span class="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[170px]" title="${f.filename}">${f.filename}</span>
-                            <span class="text-[10px] mono-font text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-950 px-1.5 py-0.5 rounded font-bold">${f.size_formatted || '0 KB'}</span>
+                            <span class="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[155px]" title="${f.filename}">${f.filename}</span>
+                            <div class="flex items-center space-x-1.5">
+                                ${statusBadge}
+                                <span class="text-[10px] mono-font text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-950 px-1.5 py-0.5 rounded font-bold">${f.size_formatted || '0 KB'}</span>
+                            </div>
                         </div>
                         <div class="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
                             <span>${f.format_detected || 'Raw I/Q'}</span>
@@ -976,7 +1080,7 @@
                             <div>${summaryText}</div>
                             <div class="flex items-center space-x-1">
                                 <button onclick="event.stopPropagation(); selectFile('${f.file_id}', this)" class="btn-analyze text-[10px] font-bold text-sky-700 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded transition">
-                                    Analyze
+                                    ${actionBtnLabel}
                                 </button>
                                 <button onclick="event.stopPropagation(); deleteFile('${f.file_id}')" class="text-[10px] text-slate-400 hover:text-rose-500 p-0.5 transition" title="Delete">
                                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -1474,10 +1578,42 @@
         // Export Modal Management
         function openExportModal() {
             document.getElementById('exportModal').classList.remove('hidden');
+            switchExportTab(exportTab || 'single');
         }
 
         function closeExportModal() {
             document.getElementById('exportModal').classList.add('hidden');
+        }
+
+        function switchExportTab(tab) {
+            exportTab = tab;
+            const singleTabBtn = document.getElementById('tabExportSingle');
+            const batchTabBtn = document.getElementById('tabExportBatch');
+            const singlePanel = document.getElementById('singleExportPanel');
+            const batchPanel = document.getElementById('batchExportPanel');
+            const btnText = document.getElementById('downloadBtnText');
+
+            if (tab === 'single') {
+                if (singleTabBtn) {
+                    singleTabBtn.className = "flex-1 py-1.5 px-3 rounded-md text-xs font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs transition flex items-center justify-center space-x-1.5";
+                }
+                if (batchTabBtn) {
+                    batchTabBtn.className = "flex-1 py-1.5 px-3 rounded-md text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition flex items-center justify-center space-x-1.5";
+                }
+                if (singlePanel) singlePanel.classList.remove('hidden');
+                if (batchPanel) batchPanel.classList.add('hidden');
+                if (btnText) btnText.innerText = `Download ${selectedFormat.toUpperCase()} Report`;
+            } else {
+                if (batchTabBtn) {
+                    batchTabBtn.className = "flex-1 py-1.5 px-3 rounded-md text-xs font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs transition flex items-center justify-center space-x-1.5";
+                }
+                if (singleTabBtn) {
+                    singleTabBtn.className = "flex-1 py-1.5 px-3 rounded-md text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition flex items-center justify-center space-x-1.5";
+                }
+                if (singlePanel) singlePanel.classList.add('hidden');
+                if (batchPanel) batchPanel.classList.remove('hidden');
+                if (btnText) btnText.innerText = `Download Batch ${selectedBatchFormat.toUpperCase()} Ledger`;
+            }
         }
 
         function selectExportFormat(fmt) {
@@ -1492,16 +1628,39 @@
                 activeCard.className = "format-card border-2 border-sky-500 bg-sky-50/60 dark:bg-sky-950/40 p-3.5 rounded-xl cursor-pointer transition flex items-start space-x-3";
             }
 
-            document.getElementById('downloadBtnText').innerText = `Download ${fmt.toUpperCase()} Report`;
+            if (exportTab === 'single') {
+                document.getElementById('downloadBtnText').innerText = `Download ${fmt.toUpperCase()} Report`;
+            }
+        }
+
+        function selectBatchExportFormat(fmt) {
+            selectedBatchFormat = fmt;
+            const cards = document.querySelectorAll('.format-card-batch');
+            cards.forEach(c => {
+                c.className = "format-card-batch border border-slate-200 dark:border-slate-800 hover:border-emerald-400 p-4 rounded-xl cursor-pointer transition flex items-start space-x-3.5";
+            });
+
+            const activeCard = document.getElementById('batch-fmt-' + fmt);
+            if (activeCard) {
+                activeCard.className = "format-card-batch border-2 border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 p-4 rounded-xl cursor-pointer transition flex items-start space-x-3.5";
+            }
+
+            if (exportTab === 'batch') {
+                document.getElementById('downloadBtnText').innerText = `Download Batch ${fmt.toUpperCase()} Ledger`;
+            }
         }
 
         function downloadReport() {
-            const fileIdParam = currentAnalysisData && currentAnalysisData.file_id ? `&file_id=${currentAnalysisData.file_id}` : '';
-            window.location.href = `/api/v1/report/export?format=${selectedFormat}${fileIdParam}`;
+            if (exportTab === 'single') {
+                const fileIdParam = currentAnalysisData && currentAnalysisData.file_id ? `&file_id=${currentAnalysisData.file_id}` : '';
+                window.location.href = `/api/v1/report/export?format=${selectedFormat}${fileIdParam}`;
+            } else {
+                window.location.href = `/api/v1/report/batch-export?format=${selectedBatchFormat}`;
+            }
             closeExportModal();
         }
 
-        // Drag and Drop Ingest
+        // Drag and Drop Multi-File Ingest
         function setupDropZone() {
             const dropZone = document.getElementById('dropZone');
             const fileInput = document.getElementById('fileInput');
@@ -1509,7 +1668,7 @@
             dropZone.onclick = () => fileInput.click();
             fileInput.onchange = (e) => {
                 if (e.target.files && e.target.files.length) {
-                    handleFileUpload(e.target.files[0]);
+                    handleFileUploads(e.target.files);
                 }
             };
 
@@ -1518,23 +1677,15 @@
             dropZone.ondrop = (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('border-sky-500');
-                if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+                if (e.dataTransfer.files && e.dataTransfer.files.length) {
+                    handleFileUploads(e.dataTransfer.files);
+                }
             };
         }
 
-        async function handleFileUpload(file) {
-            if (!file) return;
-            const dropZone = document.getElementById('dropZone');
-            const origHtml = dropZone ? dropZone.innerHTML : '';
-            if (dropZone) {
-                dropZone.innerHTML = `
-                    <div class="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/80 border border-sky-300 dark:border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto mb-2 animate-pulse">
-                        <span class="inline-block w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></span>
-                    </div>
-                    <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Ingesting & Analyzing ${file.name}...</p>
-                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Executing 8-stage DSP pipeline...</p>
-                `;
-            }
+        async function handleFileUploads(fileList) {
+            if (!fileList || fileList.length === 0) return;
+            const files = Array.from(fileList);
 
             const fsVal = document.getElementById('uploadSampleRate').value;
             const fcText = document.getElementById('uploadCenterFreq').value;
@@ -1547,6 +1698,26 @@
                 fcVal = parseFloat(fcText) * 1e3;
             } else {
                 fcVal = parseFloat(fcText) || 434500000;
+            }
+
+            if (files.length === 1) {
+                await handleSingleFileUpload(files[0], fsVal, fcVal);
+            } else {
+                await handleBatchFileUpload(files, fsVal, fcVal);
+            }
+        }
+
+        async function handleSingleFileUpload(file, fsVal, fcVal) {
+            const dropZone = document.getElementById('dropZone');
+            const origHtml = dropZone ? dropZone.innerHTML : '';
+            if (dropZone) {
+                dropZone.innerHTML = `
+                    <div class="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/80 border border-sky-300 dark:border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto mb-2 animate-pulse">
+                        <span class="inline-block w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></span>
+                    </div>
+                    <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Ingesting & Analyzing ${file.name}...</p>
+                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Executing 8-stage DSP pipeline...</p>
+                `;
             }
 
             const formData = new FormData();
@@ -1569,6 +1740,137 @@
             } finally {
                 if (dropZone) {
                     dropZone.innerHTML = origHtml;
+                    lucide.createIcons();
+                }
+            }
+        }
+
+        async function handleBatchFileUpload(files, fsVal, fcVal) {
+            const uploadProg = document.getElementById('batchUploadProgress');
+            const uploadLabel = document.getElementById('batchUploadLabel');
+            const uploadPercent = document.getElementById('batchUploadPercent');
+            const uploadBar = document.getElementById('batchUploadBar');
+
+            if (uploadProg) {
+                uploadProg.classList.remove('hidden');
+                uploadBar.style.width = '20%';
+                uploadPercent.innerText = '20%';
+                uploadLabel.innerHTML = `
+                    <span class="inline-block w-3 h-3 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mr-1.5"></span>
+                    <span>Uploading ${files.length} captures to queue...</span>
+                `;
+            }
+
+            const formData = new FormData();
+            files.forEach(f => formData.append('files', f));
+            formData.append('sample_rate', fsVal);
+            formData.append('center_freq', fcVal);
+
+            try {
+                const res = await fetch('/api/v1/files/upload-batch', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.status === 'SUCCESS') {
+                    if (uploadBar) uploadBar.style.width = '100%';
+                    if (uploadPercent) uploadPercent.innerText = '100%';
+                    if (uploadLabel) {
+                        uploadLabel.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-500 inline mr-1"></i> Queued ${data.uploaded_count} captures`;
+                        lucide.createIcons();
+                    }
+                    await refreshFileRegistry();
+                    setTimeout(() => {
+                        if (uploadProg) uploadProg.classList.add('hidden');
+                    }, 800);
+
+                    // Auto-execute sequential batch DSP across queued files
+                    await runBatchPipeline();
+                } else {
+                    alert("Batch upload error: " + (data.message || "Unknown error"));
+                    if (uploadProg) uploadProg.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error("Batch upload failed:", err);
+                alert("Batch upload failed: " + err.message);
+                if (uploadProg) uploadProg.classList.add('hidden');
+            }
+        }
+
+        // Sequential 8-Stage DSP Execution across all queued captures
+        async function runBatchPipeline() {
+            const btn = document.getElementById('btnRunBatch');
+            const origBtnHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `<span class="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span><span>Running...</span>`;
+            }
+
+            const progContainer = document.getElementById('batchExecutionProgress');
+            const progLabel = document.getElementById('batchExecLabel');
+            const progPercent = document.getElementById('batchExecPercent');
+            const progBar = document.getElementById('batchExecBar');
+
+            try {
+                const res = await fetch('/api/v1/files');
+                const data = await res.json();
+                const files = data.files || [];
+
+                if (files.length === 0) {
+                    alert("No signal captures found in the audit log. Upload files or generate a synthetic capture first.");
+                    return;
+                }
+
+                // Prioritize queued or unprocessed captures; if all are analyzed, process all
+                const queued = files.filter(f => f.status === 'QUEUED' || !f.analysis_summary);
+                const targetFiles = queued.length > 0 ? queued : files;
+
+                if (progContainer) {
+                    progContainer.classList.remove('hidden');
+                    progBar.style.width = '0%';
+                    progPercent.innerText = '0%';
+                    progLabel.innerText = `Starting batch DSP (0 of ${targetFiles.length})...`;
+                }
+
+                let completed = 0;
+                let isFirstView = !currentAnalysisData;
+
+                for (let i = 0; i < targetFiles.length; i++) {
+                    const f = targetFiles[i];
+                    const pct = Math.round((i / targetFiles.length) * 100);
+                    if (progLabel) progLabel.innerText = `Processing [${i + 1}/${targetFiles.length}]: ${f.filename}...`;
+                    if (progPercent) progPercent.innerText = `${pct}%`;
+                    if (progBar) progBar.style.width = `${pct}%`;
+
+                    try {
+                        const runRes = await fetch(`/api/v1/pipeline/run-file/${f.file_id}`, { method: 'POST' });
+                        const runData = await runRes.json();
+                        if (runData.status === 'SUCCESS') {
+                            completed++;
+                            if (isFirstView || i === 0) {
+                                renderPipelineResults(runData.analysis);
+                                isFirstView = false;
+                            }
+                        }
+                    } catch (err) {
+                        console.error(`Pipeline failure on file ${f.file_id}:`, err);
+                    }
+
+                    await refreshFileRegistry();
+                }
+
+                if (progLabel) progLabel.innerText = `Batch Complete: ${completed} of ${targetFiles.length} captures analyzed`;
+                if (progPercent) progPercent.innerText = '100%';
+                if (progBar) progBar.style.width = '100%';
+
+                setTimeout(() => {
+                    if (progContainer) progContainer.classList.add('hidden');
+                }, 2500);
+
+            } catch (err) {
+                console.error("Batch run failed:", err);
+                alert("Batch run error: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origBtnHtml;
                     lucide.createIcons();
                 }
             }

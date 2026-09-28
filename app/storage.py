@@ -16,6 +16,7 @@ REGISTRY_PATH = os.path.join(DATA_DIR, "registry.json")
 # In-memory registry fallback for resilient serverless operation
 _IN_MEMORY_REGISTRY = []
 _IN_MEMORY_FILES = {}
+_IN_MEMORY_ANALYSIS = {}
 
 def init_storage():
     try:
@@ -73,7 +74,7 @@ def save_registry(records: list):
 
 class FileRegistry:
     @staticmethod
-    def save_and_log_upload(filename: str, file_bytes: bytes, sample_rate: float = 2.0e6, center_freq: float = 434.5e6, format_hint: str = "auto") -> dict:
+    def save_and_log_upload(filename: str, file_bytes: bytes, sample_rate: float = 2.0e6, center_freq: float = 434.5e6, format_hint: str = "auto", status: str = "QUEUED") -> dict:
         init_storage()
         file_id = str(uuid.uuid4())
         safe_name = "".join(c for c in filename if c.isalnum() or c in "._- ")
@@ -122,7 +123,7 @@ class FileRegistry:
             "sample_rate": float(sample_rate),
             "center_freq": float(center_freq),
             "format_detected": fmt_label,
-            "status": "UPLOADED",
+            "status": status,
             "analysis_summary": None
         }
 
@@ -180,9 +181,28 @@ class FileRegistry:
         save_registry(records)
 
     @staticmethod
+    def update_status(file_id: str, status: str):
+        records = load_registry()
+        for r in records:
+            if r["file_id"] == file_id:
+                r["status"] = status
+                break
+        save_registry(records)
+
+    @staticmethod
+    def set_analysis(file_id: str, analysis: dict):
+        global _IN_MEMORY_ANALYSIS
+        _IN_MEMORY_ANALYSIS[file_id] = analysis
+
+    @staticmethod
+    def get_analysis(file_id: str) -> dict | None:
+        return _IN_MEMORY_ANALYSIS.get(file_id)
+
+    @staticmethod
     def delete(file_id: str) -> bool:
-        global _IN_MEMORY_FILES
+        global _IN_MEMORY_FILES, _IN_MEMORY_ANALYSIS
         _IN_MEMORY_FILES.pop(file_id, None)
+        _IN_MEMORY_ANALYSIS.pop(file_id, None)
         records = load_registry()
         record_to_del = None
         new_records = []
@@ -217,12 +237,15 @@ class FileRegistry:
 
     @staticmethod
     def clear_all():
-        global _IN_MEMORY_FILES
+        global _IN_MEMORY_FILES, _IN_MEMORY_ANALYSIS
         _IN_MEMORY_FILES.clear()
+        _IN_MEMORY_ANALYSIS.clear()
         save_registry([])
         try:
             if os.path.exists(UPLOADS_DIR):
                 for f in os.listdir(UPLOADS_DIR):
+                    if f == ".gitkeep":
+                        continue
                     p = os.path.join(UPLOADS_DIR, f)
                     if os.path.isfile(p):
                         try:
