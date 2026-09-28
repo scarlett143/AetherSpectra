@@ -1206,6 +1206,17 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ file_id: fileId })
                 });
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    let msg = `Server returned HTTP ${res.status}`;
+                    try {
+                        const j = JSON.parse(errTxt);
+                        if (j.message) msg = j.message;
+                    } catch {
+                        if (errTxt && errTxt.length < 200) msg += `: ${errTxt}`;
+                    }
+                    throw new Error(msg);
+                }
                 const data = await res.json();
                 if (data.status === 'SUCCESS') {
                     renderPipelineResults(data.analysis);
@@ -1268,6 +1279,17 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ profile: preset })
                 });
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    let msg = `Server returned HTTP ${res.status}`;
+                    try {
+                        const j = JSON.parse(errTxt);
+                        if (j.message) msg = j.message;
+                    } catch {
+                        if (errTxt && errTxt.length < 200) msg += `: ${errTxt}`;
+                    }
+                    throw new Error(msg);
+                }
                 const data = await res.json();
                 if (data.status === 'SUCCESS') {
                     renderPipelineResults(data.analysis);
@@ -1296,6 +1318,17 @@
             }
             try {
                 const res = await fetch('/api/v1/pipeline/run', { method: 'POST' });
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    let msg = `Server returned HTTP ${res.status}`;
+                    try {
+                        const j = JSON.parse(errTxt);
+                        if (j.message) msg = j.message;
+                    } catch {
+                        if (errTxt && errTxt.length < 200) msg += `: ${errTxt}`;
+                    }
+                    throw new Error(msg);
+                }
                 const data = await res.json();
                 if (data.status !== 'ERROR') {
                     renderPipelineResults(data);
@@ -1890,6 +1923,14 @@
                 `;
             }
 
+            const MAX_CHUNK_BYTES = 4.0 * 1024 * 1024; // 4.0 MB safe ceiling for Vercel 4.5MB limit
+            if (file.size > MAX_CHUNK_BYTES) {
+                console.warn(`File ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB) exceeds 4MB limit. Slicing to 4MB for serverless ingestion.`);
+                file = new File([file.slice(0, MAX_CHUNK_BYTES)], file.name, {
+                    type: file.type || 'application/octet-stream'
+                });
+            }
+
             const formData = new FormData();
             formData.append('file', file);
             formData.append('sample_rate', fsVal);
@@ -1897,6 +1938,22 @@
 
             try {
                 const res = await fetch('/api/v1/files/upload', { method: 'POST', body: formData });
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    let msg = `Server returned HTTP ${res.status}`;
+                    try {
+                        const errJson = JSON.parse(errorText);
+                        if (errJson.message) msg = errJson.message;
+                        else if (errJson.detail) msg = errJson.detail;
+                    } catch {
+                        if (res.status === 413) {
+                            msg = `Capture ${file.name} exceeds serverless body limit (4.5 MB).`;
+                        } else if (errorText && errorText.length < 200) {
+                            msg += `: ${errorText}`;
+                        }
+                    }
+                    throw new Error(msg);
+                }
                 const data = await res.json();
                 if (data.status === 'SUCCESS') {
                     renderPipelineResults(data.analysis);
@@ -1921,42 +1978,89 @@
             const uploadPercent = document.getElementById('batchUploadPercent');
             const uploadBar = document.getElementById('batchUploadBar');
 
+            const totalFiles = files.length;
+            if (totalFiles === 0) return;
+
             if (uploadProg) {
                 uploadProg.classList.remove('hidden');
-                uploadBar.style.width = '20%';
-                uploadPercent.innerText = '20%';
+                uploadBar.style.width = '5%';
+                uploadPercent.innerText = '5%';
                 uploadLabel.innerHTML = `
                     <span class="inline-block w-3 h-3 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mr-1.5"></span>
-                    <span>Uploading ${files.length} captures to queue...</span>
+                    <span>Preparing ${totalFiles} captures for ingest...</span>
                 `;
             }
 
-            const formData = new FormData();
-            files.forEach(f => formData.append('files', f));
-            formData.append('sample_rate', fsVal);
-            formData.append('center_freq', fcVal);
+            const MAX_CHUNK_BYTES = 4.0 * 1024 * 1024; // 4.0 MB safe ceiling for Vercel 4.5MB limit
+            let uploadedCount = 0;
 
             try {
-                const res = await fetch('/api/v1/files/upload-batch', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (data.status === 'SUCCESS') {
-                    if (uploadBar) uploadBar.style.width = '100%';
-                    if (uploadPercent) uploadPercent.innerText = '100%';
-                    if (uploadLabel) {
-                        uploadLabel.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-500 inline mr-1"></i> Queued ${data.uploaded_count} captures`;
-                        lucide.createIcons();
-                    }
-                    await refreshFileRegistry();
-                    setTimeout(() => {
-                        if (uploadProg) uploadProg.classList.add('hidden');
-                    }, 800);
+                // Upload sequentially to strictly respect Vercel's 4.5MB request payload limit
+                for (let i = 0; i < totalFiles; i++) {
+                    let file = files[i];
 
-                    // Auto-execute sequential batch DSP across queued files
-                    await runBatchPipeline();
-                } else {
-                    alert("Batch upload error: " + (data.message || "Unknown error"));
-                    if (uploadProg) uploadProg.classList.add('hidden');
+                    // Client-side slice safeguard if capture is large
+                    if (file.size > MAX_CHUNK_BYTES) {
+                        console.warn(`File ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB) exceeds 4MB limit. Slicing to 4MB for serverless ingestion.`);
+                        file = new File([file.slice(0, MAX_CHUNK_BYTES)], file.name, {
+                            type: file.type || 'application/octet-stream'
+                        });
+                    }
+
+                    const pct = Math.round((i / totalFiles) * 100);
+                    if (uploadBar) uploadBar.style.width = `${Math.max(5, pct)}%`;
+                    if (uploadPercent) uploadPercent.innerText = `${Math.max(5, pct)}%`;
+                    if (uploadLabel) {
+                        uploadLabel.innerHTML = `
+                            <span class="inline-block w-3 h-3 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mr-1.5"></span>
+                            <span>Uploading [${i + 1}/${totalFiles}]: ${file.name}...</span>
+                        `;
+                    }
+
+                    const formData = new FormData();
+                    formData.append('files', file);
+                    formData.append('sample_rate', fsVal);
+                    formData.append('center_freq', fcVal);
+
+                    const res = await fetch('/api/v1/files/upload-batch', { method: 'POST', body: formData });
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        let msg = `Server returned HTTP ${res.status}`;
+                        try {
+                            const errJson = JSON.parse(errorText);
+                            if (errJson.message) msg = errJson.message;
+                            else if (errJson.detail) msg = errJson.detail;
+                        } catch {
+                            if (res.status === 413) {
+                                msg = `Capture ${file.name} exceeds serverless body limit (4.5 MB).`;
+                            } else if (errorText && errorText.length < 200) {
+                                msg += `: ${errorText}`;
+                            }
+                        }
+                        throw new Error(msg);
+                    }
+
+                    const data = await res.json();
+                    if (data.status === 'SUCCESS') {
+                        uploadedCount += (data.uploaded_count || 1);
+                    } else {
+                        throw new Error(data.message || `Failed to queue ${file.name}`);
+                    }
                 }
+
+                if (uploadBar) uploadBar.style.width = '100%';
+                if (uploadPercent) uploadPercent.innerText = '100%';
+                if (uploadLabel) {
+                    uploadLabel.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-500 inline mr-1"></i> Queued ${uploadedCount} captures`;
+                    lucide.createIcons();
+                }
+                await refreshFileRegistry();
+                setTimeout(() => {
+                    if (uploadProg) uploadProg.classList.add('hidden');
+                }, 800);
+
+                // Auto-execute sequential batch DSP across queued files
+                await runBatchPipeline();
             } catch (err) {
                 console.error("Batch upload failed:", err);
                 alert("Batch upload failed: " + err.message);
@@ -1980,6 +2084,10 @@
 
             try {
                 const res = await fetch('/api/v1/files');
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    throw new Error(`Failed to load file registry: HTTP ${res.status}`);
+                }
                 const data = await res.json();
                 const files = data.files || [];
 
@@ -2011,6 +2119,11 @@
 
                     try {
                         const runRes = await fetch(`/api/v1/pipeline/run-file/${f.file_id}`, { method: 'POST' });
+                        if (!runRes.ok) {
+                            const errTxt = await runRes.text();
+                            console.error(`Pipeline failure on file ${f.file_id} (HTTP ${runRes.status}):`, errTxt);
+                            continue;
+                        }
                         const runData = await runRes.json();
                         if (runData.status === 'SUCCESS') {
                             completed++;
