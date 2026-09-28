@@ -584,9 +584,21 @@
                             </div>
                         </div>
 
-                        <!-- AMC Probability Bar Chart -->
-                        <div class="h-16 w-full mt-1">
-                            <canvas id="amcProbChart"></canvas>
+                        <!-- AMC Probability Bar Chart with Modulation Color Legend -->
+                        <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <div class="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                                <span class="font-bold uppercase tracking-wider">Classification Confidence Spectrum</span>
+                                <div class="flex items-center space-x-1.5 text-[9px] mono-font">
+                                    <span class="inline-flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block mr-1"></span>BPSK</span>
+                                    <span class="inline-flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-sky-500 inline-block mr-1"></span>QPSK</span>
+                                    <span class="inline-flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block mr-1"></span>8-PSK</span>
+                                    <span class="inline-flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block mr-1"></span>16-QAM</span>
+                                    <span class="inline-flex items-center hidden sm:inline-flex"><span class="w-1.5 h-1.5 rounded-full bg-pink-500 inline-block mr-1"></span>FSK</span>
+                                </div>
+                            </div>
+                            <div class="h-16 w-full">
+                                <canvas id="amcProbChart"></canvas>
+                            </div>
                         </div>
                     </div>
 
@@ -864,6 +876,91 @@
             };
         }
 
+        // Distinct Military Tactical Modulation Color Schemes for AMC
+        const MODULATION_PALETTE = {
+            'BPSK': {
+                name: 'BPSK',
+                hex: '#10B981', // Emerald Green
+                bgClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/60',
+                textClass: 'text-emerald-600 dark:text-emerald-400',
+                glow: 'rgba(16, 185, 129, 0.4)'
+            },
+            'QPSK': {
+                name: 'QPSK',
+                hex: '#0EA5E9', // Sky Cyan Blue
+                bgClass: 'bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300 border-sky-300 dark:border-sky-700/60',
+                textClass: 'text-sky-600 dark:text-sky-400',
+                glow: 'rgba(14, 165, 233, 0.4)'
+            },
+            '8-PSK': {
+                name: '8-PSK',
+                hex: '#8B5CF6', // Royal Purple / Violet
+                bgClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border-purple-300 dark:border-purple-700/60',
+                textClass: 'text-purple-600 dark:text-purple-400',
+                glow: 'rgba(139, 92, 246, 0.4)'
+            },
+            '16-QAM': {
+                name: '16-QAM',
+                hex: '#F59E0B', // Amber Gold
+                bgClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700/60',
+                textClass: 'text-amber-600 dark:text-amber-400',
+                glow: 'rgba(245, 158, 11, 0.4)'
+            },
+            '64-QAM': {
+                name: '64-QAM',
+                hex: '#F97316', // Deep Orange
+                bgClass: 'bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border-orange-300 dark:border-orange-700/60',
+                textClass: 'text-orange-600 dark:text-orange-400',
+                glow: 'rgba(249, 115, 22, 0.4)'
+            },
+            '2-FSK': {
+                name: '2-FSK',
+                hex: '#EC4899', // Electric Pink
+                bgClass: 'bg-pink-100 text-pink-800 dark:bg-pink-950/80 dark:text-pink-300 border-pink-300 dark:border-pink-700/60',
+                textClass: 'text-pink-600 dark:text-pink-400',
+                glow: 'rgba(236, 72, 153, 0.4)'
+            },
+            '4-FSK': {
+                name: '4-FSK',
+                hex: '#D946EF', // Electric Fuchsia
+                bgClass: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950/80 dark:text-fuchsia-300 border-fuchsia-300 dark:border-fuchsia-700/60',
+                textClass: 'text-fuchsia-600 dark:text-fuchsia-400',
+                glow: 'rgba(217, 70, 239, 0.4)'
+            },
+            'MSK': {
+                name: 'MSK',
+                hex: '#14B8A6', // Neon Teal
+                bgClass: 'bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 border-teal-300 dark:border-teal-700/60',
+                textClass: 'text-teal-600 dark:text-teal-400',
+                glow: 'rgba(20, 184, 166, 0.4)'
+            }
+        };
+
+        function getModulationStyle(modName) {
+            if (!modName || typeof modName !== 'string') {
+                return {
+                    name: 'UNKNOWN',
+                    hex: '#64748B',
+                    bgClass: 'bg-slate-100 text-slate-700 dark:bg-slate-900/60 dark:text-slate-400 border-slate-300 dark:border-slate-700',
+                    textClass: 'text-slate-600 dark:text-slate-400',
+                    glow: 'rgba(100, 116, 139, 0.3)'
+                };
+            }
+            const clean = modName.toUpperCase().trim();
+            for (const key of Object.keys(MODULATION_PALETTE)) {
+                if (clean === key || clean.includes(key) || key.includes(clean)) {
+                    return MODULATION_PALETTE[key];
+                }
+            }
+            return {
+                name: modName,
+                hex: '#0EA5E9',
+                bgClass: 'bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300 border-sky-300 dark:border-sky-700/60',
+                textClass: 'text-sky-600 dark:text-sky-400',
+                glow: 'rgba(14, 165, 233, 0.4)'
+            };
+        }
+
         function setTheme(theme) {
             const html = document.documentElement;
             const themeIcon = document.getElementById('themeToggleIcon');
@@ -1043,8 +1140,9 @@
                         statusBadge = `<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800/60">QUEUED</span>`;
                     }
 
+                    const modStyle = f.analysis_summary && f.analysis_summary.modulation ? getModulationStyle(f.analysis_summary.modulation) : null;
                     const summaryText = f.analysis_summary 
-                        ? `<span class="text-emerald-600 dark:text-emerald-400 font-bold">${f.analysis_summary.modulation || 'Analyzed'}</span> <span class="text-slate-500 dark:text-slate-400">(${f.analysis_summary.snr_db !== undefined ? f.analysis_summary.snr_db : '--'} dB SNR)</span>`
+                        ? `<span class="${modStyle ? modStyle.textClass : 'text-emerald-600 dark:text-emerald-400'} font-bold inline-flex items-center"><span class="w-1.5 h-1.5 rounded-full inline-block mr-1" style="background-color: ${modStyle ? modStyle.hex : '#10B981'};"></span><span>${f.analysis_summary.modulation || 'Analyzed'}</span></span> <span class="text-slate-500 dark:text-slate-400">(${f.analysis_summary.snr_db !== undefined ? f.analysis_summary.snr_db : '--'} dB SNR)</span>`
                         : `<span class="text-slate-400 dark:text-slate-500 italic">${st === 'ANALYZING' ? 'Processing DSP...' : (st === 'ERROR' ? 'Processing failed' : 'Awaiting DSP')}</span>`;
 
                     let timeDisplay = '--:--:--';
@@ -1223,6 +1321,16 @@
             document.getElementById('evmBadge').innerText = `-- dB`;
             document.getElementById('latencyBadge').innerText = `-- ms`;
             document.getElementById('traceTotalBadge').innerText = `-- ms Total`;
+            const amcMod = document.getElementById('amcModBadge');
+            if (amcMod) {
+                amcMod.className = "text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-2 py-0.5 rounded";
+                amcMod.innerHTML = "--";
+            }
+            const constMod = document.getElementById('constModLabel');
+            if (constMod) {
+                constMod.innerText = "Modulation Synchronized";
+                constMod.style.color = "";
+            }
         }
 
         // Render Results into UI
@@ -1274,8 +1382,20 @@
             document.getElementById('cumC20').innerText = d.amc.cumulants.C20.toFixed(2);
             document.getElementById('cumC40').innerText = d.amc.cumulants.C40.toFixed(2);
             document.getElementById('cumC42').innerText = d.amc.cumulants.C42.toFixed(2);
-            document.getElementById('amcModBadge').innerText = `${d.amc.identified_modulation} (${(d.amc.confidence * 100).toFixed(1)}%)`;
-            document.getElementById('constModLabel').innerText = `${d.amc.identified_modulation} Synchronized`;
+
+            const modStyle = getModulationStyle(d.amc.identified_modulation);
+            const amcModBadge = document.getElementById('amcModBadge');
+            if (amcModBadge) {
+                amcModBadge.className = `text-xs font-bold px-2 py-0.5 rounded border transition-all inline-flex items-center space-x-1 ${modStyle.bgClass}`;
+                amcModBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full inline-block mr-1" style="background-color: ${modStyle.hex}; box-shadow: 0 0 8px ${modStyle.glow};"></span><span>${d.amc.identified_modulation} (${(d.amc.confidence * 100).toFixed(1)}%)</span>`;
+            }
+
+            const constModLabel = document.getElementById('constModLabel');
+            if (constModLabel) {
+                constModLabel.innerText = `${d.amc.identified_modulation} Synchronized`;
+                constModLabel.style.color = modStyle.hex;
+            }
+
             document.getElementById('constLockStatus').innerText = d.synchronization.carrier_lock_status;
             document.getElementById('constEvmVal').innerText = `${d.synchronization.evm_db.toFixed(1)} dB`;
 
@@ -1540,8 +1660,27 @@
             if (amcProbChartInstance) amcProbChartInstance.destroy();
 
             const c = getThemeColors();
+            if (!probs || typeof probs !== 'object') return;
             const labels = Object.keys(probs);
             const values = Object.values(probs);
+            const maxVal = Math.max(...values, 0.01);
+
+            // Each modulation gets its unique assigned tactical color
+            const backgroundColors = labels.map((mod, idx) => {
+                const style = getModulationStyle(mod);
+                const val = values[idx];
+                const isWinner = val === maxVal || val > 0.4;
+                if (isWinner) {
+                    return style.hex;
+                }
+                return c.isDark ? style.hex + '55' : style.hex + '40';
+            });
+
+            const borderColors = labels.map((mod, idx) => {
+                const style = getModulationStyle(mod);
+                const val = values[idx];
+                return (val === maxVal || val > 0.4) ? style.hex : (c.isDark ? style.hex + '99' : style.hex + '77');
+            });
 
             amcProbChartInstance = new Chart(ctx, {
                 type: 'bar',
@@ -1549,16 +1688,47 @@
                     labels: labels,
                     datasets: [{
                         data: values,
-                        backgroundColor: values.map(v => v > 0.5 ? c.barActive : c.barInactive),
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1.5,
                         borderRadius: 3
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    animation: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${(context.raw * 100).toFixed(1)}% confidence`;
+                                }
+                            }
+                        }
+                    },
                     scales: {
-                        x: { ticks: { color: c.textColor, font: { size: 8 } }, grid: { display: false } },
+                        x: { 
+                            ticks: { 
+                                color: function(context) {
+                                    const mod = labels[context.index];
+                                    const val = values[context.index];
+                                    if (val === maxVal || val > 0.4) {
+                                        return getModulationStyle(mod).hex;
+                                    }
+                                    return c.textColor;
+                                }, 
+                                font: function(context) {
+                                    const val = values[context.index];
+                                    return { 
+                                        size: 8, 
+                                        weight: (val === maxVal || val > 0.4) ? 'bold' : 'normal' 
+                                    };
+                                }
+                            }, 
+                            grid: { display: false } 
+                        },
                         y: { max: 1.0, ticks: { display: false }, grid: { display: false } }
                     }
                 }
